@@ -23,6 +23,8 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toStrin
 const ext = name => (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
 const isAdmin = () => me?.profile?.role === "admin" && me?.profile?.status === "approved";
 const PHOTO = "photo";
+// Price comparison & sub-sale records are switched off for now; set true to bring them back.
+const SHOW_COMPARE = false;
 
 // Private files need signed URLs; reuse them for the session so the browser can cache the images.
 async function signUrls(paths) {
@@ -159,8 +161,8 @@ function renderNav() {
   const link = (href, label) => `<a href="${href}" class="${r.startsWith(href) ? "active" : ""}">${label}</a>`;
   let html = "";
   if (me && me.profile.status === "approved") {
-    html += link("#/projects", "Projects") + link("#/compare", "价格对比");
-    if (isAdmin()) html += link("#/admin/upload", "上传资料") + link("#/admin/users", "Agents") + link("#/admin/comparables", "成交记录");
+    html += link("#/projects", "Projects") + (SHOW_COMPARE ? link("#/compare", "价格对比") : "");
+    if (isAdmin()) html += link("#/admin/upload", "上传资料") + link("#/admin/users", "Agents") + (SHOW_COMPARE ? link("#/admin/comparables", "成交记录") : "");
     html += `<a href="#/logout">登出</a>`;
   } else if (me) {
     html += `<a href="#/logout">登出</a>`;
@@ -179,11 +181,11 @@ const routes = [
   [/^#\/pending$/, viewPending, "user"],
   [/^#\/projects$/, viewProjects, "approved"],
   [/^#\/p\/([^/?]+)$/, viewProject, "approved"],
-  [/^#\/compare(?:\/([^/?]+))?$/, viewCompare, "approved"],
+  ...(SHOW_COMPARE ? [[/^#\/compare(?:\/([^/?]+))?$/, viewCompare, "approved"]] : []),
   [/^#\/admin\/upload$/, viewUpload, "admin"],
   [/^#\/admin\/review\/(\d+)$/, viewReview, "admin"],
   [/^#\/admin\/users$/, viewUsers, "admin"],
-  [/^#\/admin\/comparables$/, viewComparables, "admin"],
+  ...(SHOW_COMPARE ? [[/^#\/admin\/comparables$/, viewComparables, "admin"]] : []),
   [/^#\/admin\/edit\/([^/?]+)$/, viewEdit, "admin"],
   [/^#\/admin\/new$/, () => viewEdit(null), "admin"],
 ];
@@ -228,7 +230,7 @@ function viewHome() {
   if (me && me.profile.status === "approved") { location.hash = "#/projects"; return; }
   setHero(`<section class="hero"><div class="wrap">
     <h1>${SITE}</h1>
-    <p>工厂、工业地与店铺 project 资料中心：项目资料、最新价格与 package、available unit、sales kit 下载和周边价格对比，都在这里。</p>
+    <p>工厂、工业地与店铺 project 资料中心：项目资料、最新价格与 package、available unit、地图位置和 sales kit 下载，都在这里。</p>
     <p style="margin-top:24px">
       <a class="btn" style="background:var(--accent);border-color:var(--accent);color:#18202b" href="#/login">Agent 登录</a>
       <a class="btn ghost" style="color:#fff;border-color:#fff;margin-left:8px" href="#/register">申请账号</a>
@@ -237,7 +239,7 @@ function viewHome() {
     <div class="card"><h2>📍 项目资料</h2><p class="muted">地点、规格、地契、完工日期等完整资料。</p></div>
     <div class="card"><h2>💰 价格与 Package</h2><p class="muted">最新 SPA / nett 价格、rebate，还有一键复制的 blasting template。</p></div>
     <div class="card"><h2>📄 Sales Kit 下载</h2><p class="muted">Brochure、price list、availability chart。</p></div>
-    <div class="card"><h2>📊 周边价格对比</h2><p class="muted">对比附近 sub-sale 成交价，方便和客户分析。</p></div>
+    <div class="card"><h2>🗺 地图找 Project</h2><p class="muted">在地图上看所有 project 的位置，一键 Google Maps / Waze 导航。</p></div>
   </div><p class="muted small">账号需要经过管理员批准才能查看资料。</p>`);
 }
 
@@ -425,7 +427,7 @@ async function viewProject(slug) {
   const files = p.files.filter(f => !photos.includes(f))
     .sort((a, b) => (b.uploaded_at || "").localeCompare(a.uploaded_at || "") || a.filename.localeCompare(b.filename));
   const updates = p.updates.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
-  const comps = await nearbyComparables(p.area);
+  const comps = SHOW_COMPARE ? await nearbyComparables(p.area) : [];
   const signed = await signUrls(p.files.filter(f => f.storage_path).map(f => f.storage_path));
   const photoUrls = photos.map(f => signed[f.storage_path]).filter(Boolean);
   const sum = unitSummary(units);
@@ -511,7 +513,7 @@ async function viewProject(slug) {
     <h2>快速操作</h2>
     ${blast ? `<button class="btn ok" data-copy>复制 Blasting</button>
       <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">WhatsApp 发给客户</a>` : ""}
-    <a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>
+    ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">Drive 文件夹</a>` : ""}
     ${isAdmin() ? `<a class="btn" href="#/admin/edit/${encodeURIComponent(p.slug)}">编辑 / 上传照片</a>` : ""}
