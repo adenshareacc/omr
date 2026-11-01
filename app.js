@@ -59,6 +59,21 @@ function unitSummary(units) {
   return { from_price: prices.length ? Math.min(...prices) : null, land_range: range("land_sf"), bu_range: range("bu_sf") };
 }
 
+// 011-391 93190 style, as agents write it in WhatsApp.
+function fmtPhone(ph) {
+  const d = String(ph || "").replace(/\D/g, "").replace(/^60/, "0");
+  return d.length >= 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)} ${d.slice(6)}` : String(ph || "");
+}
+
+// The stored template ends at the ✅ lines; add the map link and the sending agent's own contact.
+function composeBlast(p) {
+  if (!p.blast_template) return "";
+  const map = p.location_url && !parseLatLng(p.location_url) ? p.location_url
+    : hasGeo(p) && !p.geo_approx ? mapsLink(p) : "";
+  const sign = [me?.profile?.name, fmtPhone(me?.profile?.phone)].filter(Boolean).join("\n");
+  return [p.blast_template.trim(), map && `Location Map :\n${map}`, sign].filter(Boolean).join("\n\n");
+}
+
 function tenureChip(tenure) {
   if (!tenure) return "";
   return `<span class="chip ${/free/i.test(tenure) ? "" : "lease"}">${e(tenure.length > 18 ? tenure.slice(0, 18) + "…" : tenure)}</span>`;
@@ -423,6 +438,7 @@ async function viewProject(slug) {
     : `<div class="gallery empty"><div><h2 style="margin:0 0 6px">${e(p.name)}</h2>
         <div class="small">还没有照片${isAdmin() ? `，按「编辑」上传` : ""}</div></div></div>`;
   const geo = hasGeo(p);
+  const blast = composeBlast(p);
 
   render(`<div class="crumbs"><a href="#/projects">Projects</a>${p.area ? ` › ${e(p.area)}` : ""} › ${e(p.name)}</div>
   ${gallery}
@@ -478,9 +494,9 @@ async function viewProject(slug) {
     </div></div>
 
     <div class="section"><h2>📢 Blasting Template</h2>
-      ${p.blast_template ? `<div class="blast">${e(p.blast_template)}</div>
+      ${blast ? `<div class="blast">${e(blast)}</div>
         <p><button class="btn ok sm" data-copy>复制</button>
-        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(p.blast_template)}" target="_blank" rel="noopener">用 WhatsApp 发送</a></p>`
+        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">用 WhatsApp 发送</a></p>`
         : `<p class="muted">暂无 blasting template。</p>`}
     </div>
 
@@ -493,8 +509,8 @@ async function viewProject(slug) {
 
   <aside class="side"><div class="card">
     <h2>快速操作</h2>
-    ${p.blast_template ? `<button class="btn ok" data-copy>复制 Blasting</button>
-      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(p.blast_template)}" target="_blank" rel="noopener">WhatsApp 发给客户</a>` : ""}
+    ${blast ? `<button class="btn ok" data-copy>复制 Blasting</button>
+      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">WhatsApp 发给客户</a>` : ""}
     <a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">Drive 文件夹</a>` : ""}
@@ -530,7 +546,7 @@ async function viewProject(slug) {
     $("#c_rebate").value = u.spa_price && u.nett_price && +u.nett_price < +u.spa_price ? ((1 - u.nett_price / u.spa_price) * 100).toFixed(1) : 0;
     calc(); $("#c_spa").scrollIntoView({ behavior: "smooth", block: "center" });
   });
-  document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(p.blast_template).then(() => {
+  document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(blast).then(() => {
     const was = btn.textContent;
     btn.textContent = "已复制 ✓"; setTimeout(() => btn.textContent = was, 1500);
   }));
@@ -882,7 +898,7 @@ async function viewEdit(slug) {
     </div>
     <label>地点与基本资料（Markdown，每行 "- " 开头）</label><textarea name="info_md" rows="10">${v("info_md")}</textarea>
     <label>Package（rebate、booking、promotion）</label><textarea name="package_md" rows="6">${v("package_md")}</textarea>
-    <label>Blasting template</label><textarea name="blast_template" rows="10">${v("blast_template")}</textarea></div>
+    <label>Blasting template（不用写 Location Map 和名字电话，复制时会自动加上发送者自己的名字电话）</label><textarea name="blast_template" rows="14">${v("blast_template")}</textarea></div>
     <div class="card table-scroll"><h2>Unit 类型与价格</h2>
       <p class="small muted">价格可以写 2.41mil、2410000 或 2,410,000。名字留空的行会被删除。</p>
       <table id="units"><tr><th>Type</th><th>Land sf</th><th>BU sf</th><th>SPA</th><th>Nett</th><th>Available</th><th>备注</th></tr>
