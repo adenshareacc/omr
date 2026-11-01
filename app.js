@@ -113,6 +113,11 @@ async function route() {
   const hash = location.hash || "#/";
   flash("");
   setHero("");
+  if (!me) await loadMe();
+  if (me && /^#\/(login|register)$/.test(hash)) {
+    location.hash = me.profile.status === "approved" ? "#/projects" : "#/pending";
+    return;
+  }
   for (const [re, view, access] of routes) {
     const m = hash.match(re);
     if (!m) continue;
