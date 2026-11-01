@@ -168,3 +168,9 @@ body.wide main.wrap { max-width: none; padding: 0; }
 .photos-edit figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; font-size: 12px; }
 .photos-edit img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
 .photos-edit figcaption { padding: 6px 8px; display: flex; justify-content: space-between; gap: 6px; align-items: center; }
+
+.upd { background: var(--card); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
+.upd .md { margin-top: 4px; }
+.upd .md ul { margin: 0; padding-left: 18px; }
+.upd .md li { margin: 2px 0; }
+.md a { word-break: break-all; }

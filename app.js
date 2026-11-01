@@ -503,7 +503,8 @@ async function viewProject(slug) {
     </div>
 
     <div class="section"><h2>🕒 最新动态</h2>
-      ${updates.map(u => `<div style="margin-bottom:10px"><div>${e(u.text)}</div><div class="small muted">${e(u.created_at.slice(0, 10))}${u.source ? " · " + e(u.source) : ""}</div></div>`).join("") || `<p class="muted">暂无更新。</p>`}
+      ${updates.map(u => `<div class="upd"><div class="small muted">${e(u.created_at.slice(0, 10))}${u.source ? " · " + e(u.source) : ""}</div>
+        <div class="md">${md(u.text)}</div></div>`).join("") || `<p class="muted">暂无更新。</p>`}
     </div>
     ${comps.length ? `<div class="section"><h2>📊 附近成交 / Sub-sale（${comps.length}）</h2><div class="card">${compsTable(comps.slice(0, 15))}
       <p style="margin-bottom:0"><a href="#/compare/${encodeURIComponent(p.slug)}">查看完整对比 →</a></p></div></div>` : ""}
@@ -729,7 +730,7 @@ async function viewReview(id) {
       if (ch.field === "unit_types") body = `<div class="diff"><div class="old table-scroll"><div class="small muted">现在</div>${unitsTable(JSON.parse(ch.old_value || "[]"))}</div>
           <div class="new table-scroll"><div class="small muted">AI 建议</div>${unitsTable(JSON.parse(ch.new_value || "[]"))}</div></div>`;
       else if (ch.field === "new_project") body = `<p>AI 认为这是一个新的 project：<b>${e(ch.new_value)}</b>。批准后会建立新的 project 页面。如果其实是现有的 project，请拒绝，然后告诉 Claude 正确的名字。</p>`;
-      else if (ch.field === "update") body = `<div class="diff"><div class="new" style="grid-column:1/-1">${e(ch.new_value)}</div></div>`;
+      else if (ch.field === "update") body = `<div class="diff"><div class="new md" style="grid-column:1/-1">${md(ch.new_value)}</div></div>`;
       else if (ch.field === "file") { const m = JSON.parse(ch.new_value); body = `<p>把 <b>${e(m.filename)}</b> 加到文件下载（${e(m.doc_type)}）。</p>`; }
       else body = `<div class="diff"><div class="old"><div class="small muted">现在</div>${md(ch.old_value) || `<span class="muted">（空）</span>`}</div>
           <div class="new"><div class="small muted">AI 建议${ch.status === "pending" ? "（可以直接修改）" : ""}</div>
