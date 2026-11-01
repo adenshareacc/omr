@@ -22,6 +22,75 @@ const psf = (price, area) => price && area ? +price / +area : null;
 const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, "");
 const ext = name => (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
 const isAdmin = () => me?.profile?.role === "admin" && me?.profile?.status === "approved";
+const PHOTO = "photo";
+
+// Private files need signed URLs; reuse them for the session so the browser can cache the images.
+async function signUrls(paths) {
+  let cache = {};
+  try { cache = JSON.parse(sessionStorage.getItem("omr_signed") || "{}"); } catch {}
+  const now = Date.now(), ttl = 6 * 3600;
+  const need = [...new Set(paths)].filter(p => !(cache[p] && cache[p].exp > now + 600000));
+  if (need.length) {
+    const { data } = await sb.storage.from("docs").createSignedUrls(need, ttl);
+    (data || []).forEach((s, i) => { if (s.signedUrl) cache[need[i]] = { url: s.signedUrl, exp: now + ttl * 1000 }; });
+    try { sessionStorage.setItem("omr_signed", JSON.stringify(cache)); } catch {}
+  }
+  return Object.fromEntries(paths.map(p => [p, cache[p]?.url]));
+}
+
+// Coordinates from a Google Maps link, or typed as "3.0412, 101.4523".
+function parseLatLng(s) {
+  s = String(s || "");
+  const m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+    || s.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i)
+    || s.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)\s*$/);
+  return m ? { lat: +m[1], lng: +m[2] } : null;
+}
+
+const hasGeo = p => p.lat != null && p.lng != null;
+const mapsLink = p => hasGeo(p) ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}` : p.location_url;
+
+// Price and size ranges across a project's unit types, for cards and the spec grid.
+function unitSummary(units) {
+  const vals = k => units.map(u => +u[k]).filter(Boolean);
+  const range = k => { const v = vals(k); if (!v.length) return ""; const lo = Math.min(...v), hi = Math.max(...v);
+    return lo === hi ? num(lo) : `${num(lo)} – ${num(hi)}`; };
+  const prices = units.map(u => +(u.nett_price || u.spa_price)).filter(Boolean);
+  return { from_price: prices.length ? Math.min(...prices) : null, land_range: range("land_sf"), bu_range: range("bu_sf") };
+}
+
+function tenureChip(tenure) {
+  if (!tenure) return "";
+  return `<span class="chip ${/free/i.test(tenure) ? "" : "lease"}">${e(tenure.length > 18 ? tenure.slice(0, 18) + "…" : tenure)}</span>`;
+}
+
+function lightbox(urls, i) {
+  const box = document.createElement("div");
+  box.className = "lightbox";
+  const show = () => { box.innerHTML = `<img src="${e(urls[i])}" alt=""><button class="x" aria-label="关闭">×</button>
+    ${urls.length > 1 ? `<button class="prev" aria-label="上一张">‹</button><button class="next" aria-label="下一张">›</button>` : ""}
+    <div class="n">${i + 1} / ${urls.length}</div>`; };
+  const go = d => { i = (i + d + urls.length) % urls.length; show(); };
+  const close = () => { box.remove(); document.removeEventListener("keydown", key); };
+  const key = ev => { if (ev.key === "Escape") close(); else if (ev.key === "ArrowLeft") go(-1); else if (ev.key === "ArrowRight") go(1); };
+  box.onclick = ev => { const c = ev.target.className; if (c === "prev") go(-1); else if (c === "next") go(1); else if (c === "x" || ev.target === box) close(); };
+  document.addEventListener("keydown", key);
+  show();
+  document.body.appendChild(box);
+}
+
+// Shrink photos before upload (max 1600 px JPEG) so pages load fast and storage lasts.
+async function shrinkImage(file, max = 1600) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.82));
+    return blob ? { blob, ext: ".jpg" } : { blob: file, ext: ext(file.name) };
+  } catch { return { blob: file, ext: ext(file.name) }; }
+}
 
 function toFloat(v) {
   v = String(v ?? "").replace(/,/g, "").replace(/rm/i, "").trim().toLowerCase();
@@ -113,6 +182,8 @@ async function route() {
   const hash = location.hash || "#/";
   flash("");
   setHero("");
+  document.body.classList.remove("wide");
+  if (listMap) { listMap.remove(); listMap = null; }
   if (!me) await loadMe();
   if (me && /^#\/(login|register)$/.test(hash)) {
     location.hash = me.profile.status === "approved" ? "#/projects" : "#/pending";
@@ -212,37 +283,113 @@ function viewPending() {
 }
 
 // ---------- agent views ----------
+let listMap = null;
+
+function fitListing() {
+  const l = $(".listing");
+  if (!l) return;
+  l.style.height = innerWidth > 900 ? `${innerHeight - l.getBoundingClientRect().top - scrollY}px` : "";
+  if (listMap) listMap.invalidateSize();
+}
+window.addEventListener("resize", fitListing);
+
+const pinIcon = (hl, approx) => L.divIcon({ className: "", html: `<div class="pin${hl ? " hl" : ""}${approx ? " approx" : ""}"></div>`,
+  iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] });
+
 async function viewProjects() {
-  const res = await sb.from("projects").select("id, slug, name, area, category, status, unit_types(spa_price, nett_price)").order("area").order("name");
+  const [res, ph] = await Promise.all([
+    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
+    sb.from("files").select("project_id, storage_path").eq("doc_type", PHOTO).not("storage_path", "is", null).order("sort_order").order("id"),
+  ]);
   check(res, "读取 projects ");
-  const projects = res.data.map(p => {
-    const prices = p.unit_types.map(u => u.nett_price || u.spa_price).filter(Boolean);
-    return { ...p, from_price: prices.length ? Math.min(...prices) : null };
-  });
+  const photos = {};
+  (ph.data || []).forEach(f => (photos[f.project_id] ||= []).push(f.storage_path));
+  const urls = await signUrls(Object.values(photos).map(a => a[0]));
+  const projects = res.data.map(p => ({ ...p, ...unitSummary(p.unit_types),
+    cover: photos[p.id] ? urls[photos[p.id][0]] : null, nphotos: (photos[p.id] || []).length }));
   const areas = [...new Set(projects.map(p => p.area).filter(Boolean))].sort();
-  const saved = JSON.parse(sessionStorage.getItem("omr_filters") || "{}");
-  render(`<div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap">
-      <div style="margin-right:auto"><h1>Projects</h1><div class="muted small" id="count"></div></div>
+  const cats = [...new Set(projects.map(p => p.category).filter(Boolean))].sort();
+  let saved = {};
+  try { saved = JSON.parse(sessionStorage.getItem("omr_filters") || "{}"); } catch {}
+  const opts = (list, cur) => list.map(a => `<option ${a === cur ? "selected" : ""}>${e(a)}</option>`).join("");
+  document.body.classList.add("wide");
+  render(`<div class="list-bar">
+      <input id="q" placeholder="搜索名字、地区、发展商、类型…" value="${e(saved.q || "")}">
+      <select id="area"><option value="">全部地区</option>${opts(areas, saved.area)}</select>
+      ${cats.length ? `<select id="cat"><option value="">全部类型</option>${opts(cats, saved.cat)}</select>` : ""}
+      <select id="status"><option value="">全部状态</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
       ${isAdmin() ? `<a class="btn ghost" href="#/admin/new">+ 新增 project</a>` : ""}
     </div>
-    <div class="filters">
-      <input id="q" placeholder="搜索名字、地区、发展商、类型…" value="${e(saved.q || "")}">
-      <select id="area"><option value="">全部地区</option>${areas.map(a => `<option ${a === saved.area ? "selected" : ""}>${e(a)}</option>`).join("")}</select>
-      <select id="status"><option value="">全部状态</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
+    <div class="listing">
+      <div class="results"><h1>工厂、工业地与店铺 Projects</h1><div class="muted small" id="count"></div><div class="cards" id="list"></div></div>
+      <div class="mapbox"><div id="map"></div>
+        <label class="map-opt"><input type="checkbox" id="inview" ${saved.inview ? "checked" : ""}> 只显示地图范围内的 project</label></div>
     </div>
-    <div class="grid" id="list"></div>`);
+    <button class="btn view-toggle" id="toggle">🗺 地图</button>`);
+  fitListing();
+
+  const byId = Object.fromEntries(projects.map(p => [p.id, p]));
+  const markers = {};
+  let cluster = null;
+  if (window.L) {
+    listMap = L.map("map", { scrollWheelZoom: true }).setView([3.05, 101.55], 10);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(listMap);
+    cluster = L.markerClusterGroup ? L.markerClusterGroup({ maxClusterRadius: 40, showCoverageOnHover: false }) : L.layerGroup();
+    listMap.addLayer(cluster);
+    projects.filter(hasGeo).forEach(p => {
+      const m = L.marker([p.lat, p.lng], { icon: pinIcon(false, p.geo_approx), title: p.name });
+      m.bindPopup(`<a class="mpop" href="#/p/${encodeURIComponent(p.slug)}" style="display:block;color:inherit;text-decoration:none">
+        ${p.cover ? `<img src="${e(p.cover)}" alt="">` : ""}<b>${e(p.name)}</b>
+        <span class="small muted">${e([p.category, p.area].filter(Boolean).join(" · "))}</span>
+        ${p.from_price ? `<div style="font-weight:700;margin-top:2px">由 ${rm(p.from_price)} 起</div>` : ""}</a>`);
+      markers[p.id] = m;
+    });
+  }
+  const pts = projects.filter(hasGeo).map(p => [p.lat, p.lng]);
+  const fitAll = () => { if (listMap && pts.length) listMap.fitBounds(pts, { padding: [30, 30], maxZoom: 13 }); };
+  fitAll();
+
   const draw = () => {
-    const q = $("#q").value.trim().toLowerCase(), area = $("#area").value, status = $("#status").value;
-    sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, status }));
-    const rows = projects.filter(p => (!q || [p.name, p.area, p.category].join(" ").toLowerCase().includes(q))
-      && (!area || p.area === area) && (!status || p.status === status));
-    $("#count").textContent = `共 ${rows.length} 个`;
-    $("#list").innerHTML = rows.map(p => `<a class="pcard" href="#/p/${encodeURIComponent(p.slug)}">
-        <h3>${e(p.name)}</h3><div>${badge(p.status)}${p.area ? `<span class="badge">${e(p.area)}</span>` : ""}</div>
-        <div class="small muted" style="margin-top:6px">${e([p.category, p.from_price && `由 ${rm(p.from_price)} 起`].filter(Boolean).join(" · "))}</div>
-      </a>`).join("") || `<p class="muted">找不到符合的 project。</p>`;
+    const q = $("#q").value.trim().toLowerCase(), area = $("#area").value, cat = $("#cat")?.value || "", status = $("#status").value;
+    const inview = $("#inview").checked;
+    try { sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, cat, status, inview })); } catch {}
+    const matches = projects.filter(p => (!q || [p.name, p.area, p.category, p.developer].join(" ").toLowerCase().includes(q))
+      && (!area || p.area === area) && (!cat || p.category === cat) && (!status || p.status === status));
+    if (cluster) {
+      cluster.clearLayers();
+      matches.forEach(p => markers[p.id] && cluster.addLayer(markers[p.id]));
+    }
+    // On phones the map is hidden behind a toggle; only filter by it while it is on screen.
+    const bounds = listMap && inview && $("#map").offsetWidth ? listMap.getBounds() : null;
+    const rows = bounds ? matches.filter(p => hasGeo(p) && bounds.contains([p.lat, p.lng])) : matches;
+    $("#count").textContent = `找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`;
+    $("#list").innerHTML = rows.map(p => `<a class="lcard" data-id="${p.id}" href="#/p/${encodeURIComponent(p.slug)}">
+        <div class="ph">${p.cover ? `<img src="${e(p.cover)}" alt="" loading="lazy">` : `<div class="noimg">${e(p.name)}</div>`}
+          <span class="tag ${e(p.status)}">${e(STATUS_LABEL[p.status] || p.status)}</span>
+          ${p.nphotos > 1 ? `<span class="cnt">📷 ${p.nphotos}</span>` : ""}</div>
+        <div class="bd"><div class="kicker">${e(p.category || "Project")}</div>
+          <h3>${e(p.name)}</h3>
+          <div class="loc">📍 ${e(p.area || "—")}</div>
+          <div class="price-row"><div class="price">${p.from_price ? `<small>由</small> ${rm(p.from_price)} <small>起</small>` : `<small>价格待更新</small>`}</div>${tenureChip(p.tenure)}</div>
+          ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>建筑 <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>土地 <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
+        </div></a>`).join("") || `<p class="muted">找不到符合的 project。${bounds ? "试试把地图拉远，或取消「只显示地图范围内」。" : ""}</p>`;
+    document.querySelectorAll(".lcard").forEach(c => {
+      const p = byId[c.dataset.id], m = markers[p.id];
+      if (!m) return;
+      c.onmouseenter = () => { m.setIcon(pinIcon(true, p.geo_approx)); m.setZIndexOffset(1000); };
+      c.onmouseleave = () => { m.setIcon(pinIcon(false, p.geo_approx)); m.setZIndexOffset(0); };
+    });
   };
-  ["q", "area", "status"].forEach(id => $("#" + id).addEventListener("input", draw));
+  ["q", "area", "cat", "status", "inview"].forEach(id => $("#" + id)?.addEventListener("input", draw));
+  if (listMap) listMap.on("moveend", () => { if ($("#inview")?.checked) draw(); });
+  let mapShown = innerWidth > 900;
+  $("#toggle").onclick = () => {
+    const on = $(".listing").classList.toggle("show-map");
+    $("#toggle").textContent = on ? "☰ 列表" : "🗺 地图";
+    if (listMap) { listMap.invalidateSize(); if (on && !mapShown) { mapShown = true; fitAll(); } }
+    draw();
+  };
   draw();
 }
 
@@ -259,34 +406,52 @@ async function viewProject(slug) {
   const p = res.data;
   if (!p) { render(`<div class="card"><h1>找不到这个 project</h1></div>`); return; }
   const units = p.unit_types.sort((a, b) => a.id - b.id);
-  const files = p.files.sort((a, b) => (b.uploaded_at || "").localeCompare(a.uploaded_at || "") || a.filename.localeCompare(b.filename));
+  const photos = p.files.filter(f => f.doc_type === PHOTO && f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const files = p.files.filter(f => !photos.includes(f))
+    .sort((a, b) => (b.uploaded_at || "").localeCompare(a.uploaded_at || "") || a.filename.localeCompare(b.filename));
   const updates = p.updates.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
   const comps = await nearbyComparables(p.area);
-  const stored = files.filter(f => f.storage_path);
-  const signed = {};
-  if (stored.length) {
-    const { data } = await sb.storage.from("docs").createSignedUrls(stored.map(f => f.storage_path), 3600);
-    (data || []).forEach((s, i) => { if (s.signedUrl) signed[stored[i].id] = s.signedUrl; });
-  }
+  const signed = await signUrls(p.files.filter(f => f.storage_path).map(f => f.storage_path));
+  const photoUrls = photos.map(f => signed[f.storage_path]).filter(Boolean);
+  const sum = unitSummary(units);
   const none = `<p class="muted">暂无资料</p>`;
-  render(`<p class="small"><a href="#/projects">← 全部 projects</a></p>
-  <div style="display:flex;gap:12px;align-items:start;flex-wrap:wrap">
-    <div style="margin-right:auto"><h1>${e(p.name)}</h1>
-      <div>${badge(p.status)}${[p.area, p.category, p.tenure, p.developer].filter(Boolean).map(b => `<span class="badge">${e(b)}</span>`).join("")}</div>
-      <div class="small muted" style="margin-top:6px">最后更新 ${e((p.updated_at || "").slice(0, 10))}</div></div>
-    <div>
-      ${p.location_url ? `<a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 地图</a>` : ""}
-      ${p.drive_url ? `<a class="btn ghost sm" href="${e(p.drive_url)}" target="_blank" rel="noopener">Drive 文件夹</a>` : ""}
-      <a class="btn ghost sm" href="#/compare/${encodeURIComponent(p.slug)}">📊 价格对比</a>
-      ${isAdmin() ? `<a class="btn sm" href="#/admin/edit/${encodeURIComponent(p.slug)}">编辑</a>` : ""}
+  const spec = (label, value) => value ? `<div><span>${label}</span><b>${e(value)}</b></div>` : "";
+  const shown = photoUrls.slice(0, 5);
+  const gallery = shown.length
+    ? `<div class="gallery n${shown.length}">${shown.map((u, i) => `<div data-photo="${i}"><img src="${e(u)}" alt="" ${i ? `loading="lazy"` : ""}></div>`).join("")}
+        <button class="btn sm all" data-photo="0">📷 查看全部 ${photoUrls.length} 张照片</button></div>`
+    : `<div class="gallery empty"><div><h2 style="margin:0 0 6px">${e(p.name)}</h2>
+        <div class="small">还没有照片${isAdmin() ? `，按「编辑」上传` : ""}</div></div></div>`;
+  const geo = hasGeo(p);
+
+  render(`<div class="crumbs"><a href="#/projects">Projects</a>${p.area ? ` › ${e(p.area)}` : ""} › ${e(p.name)}</div>
+  ${gallery}
+  <div class="pgrid"><div>
+    <div class="kicker">${e([p.category, p.developer].filter(Boolean).join(" · ") || "Project")}</div>
+    <h1>${e(p.name)}</h1>
+    <div class="loc">📍 ${e(p.area || "—")}</div>
+    <div class="bigprice">${sum.from_price ? `<span class="small muted" style="font-weight:400">由</span> ${rm(sum.from_price)} <span class="small muted" style="font-weight:400">起</span>` : `<span class="muted" style="font-size:18px">价格待更新</span>`}</div>
+    <div>${badge(p.status)}</div>
+    <div class="specs">
+      ${spec("地契 Tenure", p.tenure)}${spec("类型 Type", p.category)}${spec("发展商 Developer", p.developer)}
+      ${spec("建筑面积 Built-up", sum.bu_range && sum.bu_range + " sf")}${spec("土地面积 Land", sum.land_range && sum.land_range + " sf")}
+      ${spec("Unit 类型", units.length ? units.length + " 种" : "")}${spec("最后更新", (p.updated_at || "").slice(0, 10))}
     </div>
-  </div>
-  <div class="two" style="margin-top:16px">
-    <div class="card md"><h2>📍 地点与基本资料</h2>${md(p.info_md) || none}</div>
-    <div class="card md"><h2>🎁 Package</h2>${md(p.package_md) || none}</div>
-  </div>
-  <div class="card"><h2>🏭 Unit 类型与价格</h2>
-    ${units.length ? `<div class="table-scroll"><table>
+
+    <div class="section"><h2>位置</h2>
+      ${geo ? `<iframe class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+          src="https://maps.google.com/maps?q=${p.lat},${p.lng}&z=${p.geo_approx ? 13 : 15}&output=embed"></iframe>
+        <p style="margin-top:10px"><a class="btn ghost sm" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank" rel="noopener">Google Maps 导航</a>
+          <a class="btn ghost sm" href="https://waze.com/ul?ll=${p.lat},${p.lng}&navigate=yes" target="_blank" rel="noopener">Waze</a></p>
+        ${p.geo_approx ? `<p class="small muted">大约位置（按地区标出）。准确地址请看 sales kit${isAdmin() ? `；管理员可以在「编辑」贴上 Google Maps 链接来修正` : ""}。</p>` : ""}`
+      : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 打开 Google Maps</a></p>` : `<p class="muted">还没有位置资料。</p>`}
+    </div>
+
+    <div class="section md"><h2>项目资料</h2>${md(p.info_md) || none}</div>
+    <div class="section md"><h2>🎁 Package</h2>${md(p.package_md) || none}</div>
+
+    <div class="section"><h2>Unit 类型与价格</h2>
+    ${units.length ? `<div class="card table-scroll"><table>
       <tr><th>Type</th><th class="num">Land sf</th><th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th class="num">RM psf (BU)</th><th class="num">RM psf (land)</th><th>Available</th><th></th></tr>
       ${units.map(u => { const price = u.nett_price || u.spa_price; return `<tr>
         <td><b>${e(u.name)}</b>${u.notes ? `<div class="small muted">${e(u.notes)}</div>` : ""}</td>
@@ -296,40 +461,54 @@ async function viewProject(slug) {
         <td>${e(u.available)}</td>
         <td><button class="btn ghost sm" data-unit="${u.id}">计算</button></td></tr>`; }).join("")}
     </table></div>` : `<p class="muted">还没有价格资料。</p>`}
-  </div>
-  <div class="card"><h2>🧮 计算器</h2>
-    <div class="calc">
-      <div><label>SPA 价格 (RM)</label><input id="c_spa" inputmode="decimal"></div>
-      <div><label>Rebate %</label><input id="c_rebate" inputmode="decimal" value="0"></div>
-      <div><label>Built-up sf</label><input id="c_bu" inputmode="decimal"></div>
-      <div><label>Land sf</label><input id="c_land" inputmode="decimal"></div>
-      <div><label>Loan margin %</label><input id="c_margin" inputmode="decimal" value="90"></div>
-      <div><label>利率 % p.a.</label><input id="c_rate" inputmode="decimal" value="4.5"></div>
-      <div><label>年限</label><input id="c_years" inputmode="decimal" value="25"></div>
     </div>
-    <div class="calc-out" id="c_out"></div>
-    <p class="small muted">Loan 按 SPA 价格计算；实际 margin 与利率以银行批准为准。</p>
-  </div>
-  <div class="card"><h2>📢 Blasting Template</h2>
-    ${p.blast_template ? `<div class="blast" id="blast">${e(p.blast_template)}</div>
-      <p><button class="btn ok sm" id="copy">复制</button>
-      <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(p.blast_template)}" target="_blank" rel="noopener">用 WhatsApp 发送</a></p>`
-      : `<p class="muted">暂无 blasting template。</p>`}
-  </div>
-  <div class="two">
-    <div class="card"><h2>📄 文件下载</h2>
-      ${files.length ? `<table>${files.map(f => {
-        const url = f.storage_path ? signed[f.id] : f.drive_url;
-        return `<tr><td>${url ? `<a href="${e(url)}" target="_blank" rel="noopener">${e(f.filename)}</a>` : e(f.filename)}</td>
-          <td class="small muted">${e((f.doc_type || "").replace(/_/g, " "))}${!f.storage_path && f.drive_url ? " · Drive" : ""}</td></tr>`;
-      }).join("")}</table>` : `<p class="muted">暂无文件。</p>`}
+
+    <div class="section"><h2>🧮 计算器</h2><div class="card">
+      <div class="calc">
+        <div><label>SPA 价格 (RM)</label><input id="c_spa" inputmode="decimal"></div>
+        <div><label>Rebate %</label><input id="c_rebate" inputmode="decimal" value="0"></div>
+        <div><label>Built-up sf</label><input id="c_bu" inputmode="decimal"></div>
+        <div><label>Land sf</label><input id="c_land" inputmode="decimal"></div>
+        <div><label>Loan margin %</label><input id="c_margin" inputmode="decimal" value="90"></div>
+        <div><label>利率 % p.a.</label><input id="c_rate" inputmode="decimal" value="4.5"></div>
+        <div><label>年限</label><input id="c_years" inputmode="decimal" value="25"></div>
+      </div>
+      <div class="calc-out" id="c_out"></div>
+      <p class="small muted" style="margin-bottom:0">Loan 按 SPA 价格计算；实际 margin 与利率以银行批准为准。</p>
+    </div></div>
+
+    <div class="section"><h2>📢 Blasting Template</h2>
+      ${p.blast_template ? `<div class="blast">${e(p.blast_template)}</div>
+        <p><button class="btn ok sm" data-copy>复制</button>
+        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(p.blast_template)}" target="_blank" rel="noopener">用 WhatsApp 发送</a></p>`
+        : `<p class="muted">暂无 blasting template。</p>`}
     </div>
-    <div class="card"><h2>🕒 最新动态</h2>
+
+    <div class="section"><h2>🕒 最新动态</h2>
       ${updates.map(u => `<div style="margin-bottom:10px"><div>${e(u.text)}</div><div class="small muted">${e(u.created_at.slice(0, 10))}${u.source ? " · " + e(u.source) : ""}</div></div>`).join("") || `<p class="muted">暂无更新。</p>`}
     </div>
+    ${comps.length ? `<div class="section"><h2>📊 附近成交 / Sub-sale（${comps.length}）</h2><div class="card">${compsTable(comps.slice(0, 15))}
+      <p style="margin-bottom:0"><a href="#/compare/${encodeURIComponent(p.slug)}">查看完整对比 →</a></p></div></div>` : ""}
   </div>
-  ${comps.length ? `<div class="card"><h2>📊 附近成交 / Sub-sale（${comps.length}）</h2>${compsTable(comps.slice(0, 15))}
-    <p><a href="#/compare/${encodeURIComponent(p.slug)}">查看完整对比 →</a></p></div>` : ""}`);
+
+  <aside class="side"><div class="card">
+    <h2>快速操作</h2>
+    ${p.blast_template ? `<button class="btn ok" data-copy>复制 Blasting</button>
+      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(p.blast_template)}" target="_blank" rel="noopener">WhatsApp 发给客户</a>` : ""}
+    <a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>
+    ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
+    ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">Drive 文件夹</a>` : ""}
+    ${isAdmin() ? `<a class="btn" href="#/admin/edit/${encodeURIComponent(p.slug)}">编辑 / 上传照片</a>` : ""}
+  </div>
+  <div class="card"><h2>📄 Sales Kit 与文件（${files.length}）</h2>
+    <div class="dl" style="max-height:420px;overflow-y:auto">
+    ${files.map(f => { const url = f.storage_path ? signed[f.storage_path] : f.drive_url;
+      return `<a ${url ? `href="${e(url)}" target="_blank" rel="noopener"` : ""}>${e(f.filename)}
+        <div class="small muted">${e((f.doc_type || "").replace(/_/g, " "))}${!f.storage_path && f.drive_url ? " · Drive" : ""}</div></a>`; }).join("") || `<p class="muted">暂无文件。</p>`}
+    </div></div>
+  </aside></div>`);
+
+  document.querySelectorAll("[data-photo]").forEach(el => el.onclick = () => lightbox(photoUrls, +el.dataset.photo));
 
   const n = v => parseFloat(String(v).replace(/,/g, "")) || 0;
   const fmt = v => "RM " + Math.round(v).toLocaleString("en-MY");
@@ -351,10 +530,10 @@ async function viewProject(slug) {
     $("#c_rebate").value = u.spa_price && u.nett_price && +u.nett_price < +u.spa_price ? ((1 - u.nett_price / u.spa_price) * 100).toFixed(1) : 0;
     calc(); $("#c_spa").scrollIntoView({ behavior: "smooth", block: "center" });
   });
-  const copy = $("#copy");
-  if (copy) copy.onclick = () => navigator.clipboard.writeText(p.blast_template).then(() => {
-    copy.textContent = "已复制 ✓"; setTimeout(() => copy.textContent = "复制", 1500);
-  });
+  document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(p.blast_template).then(() => {
+    const was = btn.textContent;
+    btn.textContent = "已复制 ✓"; setTimeout(() => btn.textContent = was, 1500);
+  }));
 }
 
 function compsTable(comps) {
@@ -492,7 +671,9 @@ async function applyChange(ch, upload) {
   }
   if (!ch.project_id) throw new Error("请先批准「新增 project」。");
   if (PROJECT_FIELDS.includes(ch.field)) {
-    check(await sb.from("projects").update({ [ch.field]: ch.new_value, updated_at: now }).eq("id", ch.project_id), "更新资料 ");
+    const geo = ch.field === "location_url" && parseLatLng(ch.new_value);
+    check(await sb.from("projects").update({ [ch.field]: ch.new_value, ...(geo ? { ...geo, geo_approx: false } : {}), updated_at: now })
+      .eq("id", ch.project_id), "更新资料 ");
   } else if (ch.field === "unit_types") {
     const units = JSON.parse(ch.new_value).map(u => ({ project_id: ch.project_id, name: u.name, land_sf: u.land_sf ?? null,
       bu_sf: u.bu_sf ?? null, spa_price: u.spa_price ?? null, nett_price: u.nett_price ?? null, available: u.available || "", notes: u.notes || "" }));
@@ -681,6 +862,9 @@ async function viewEdit(slug) {
     units = p.unit_types.sort((a, b) => a.id - b.id);
     files = p.files.sort((a, b) => a.filename.localeCompare(b.filename));
   }
+  const photos = files.filter(f => f.doc_type === PHOTO && f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  files = files.filter(f => !photos.includes(f));
+  const photoUrls = await signUrls(photos.map(f => f.storage_path));
   const v = k => e(p ? p[k] ?? "" : "");
   const n = x => x == null ? "" : Math.round(+x);
   render(`<p class="small"><a href="${p ? "#/p/" + encodeURIComponent(p.slug) : "#/projects"}">← 返回</a></p>
@@ -692,7 +876,8 @@ async function viewEdit(slug) {
       <div><label>类型</label><input name="category" value="${v("category")}" placeholder="Semi-D Factory / Link Factory / Industrial Land"></div>
       <div><label>地契</label><input name="tenure" value="${v("tenure")}" placeholder="Freehold / 99-year Leasehold"></div>
       <div><label>状态</label><select name="status">${Object.entries(STATUS_LABEL).map(([k, l]) => `<option value="${k}" ${p && p.status === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div><label>Google Maps 链接</label><input name="location_url" value="${v("location_url")}"></div>
+      <div><label>Google Maps 链接或坐标</label><input name="location_url" value="${v("location_url")}" placeholder="https://www.google.com/maps/place/… 或 3.0412, 101.4523">
+        <div class="small muted" style="margin-top:4px">在 Google Maps 电脑版找到地点，复制网址贴进来；或在地点上按右键，点第一行的数字（坐标）复制贴上。${p && hasGeo(p) ? `现在：${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}${p.geo_approx ? "（大约位置）" : ""}` : ""}</div></div>
       <div><label>Google Drive 文件夹</label><input name="drive_url" value="${v("drive_url")}"></div>
     </div>
     <label>地点与基本资料（Markdown，每行 "- " 开头）</label><textarea name="info_md" rows="10">${v("info_md")}</textarea>
@@ -707,6 +892,12 @@ async function viewEdit(slug) {
         <td><input data-u="nett_price" value="${u ? n(u.nett_price) : ""}"></td><td><input data-u="available" value="${e(u?.available)}"></td>
         <td><input data-u="notes" value="${e(u?.notes)}"></td></tr>`).join("")}</table>
       <p><button type="button" class="btn ghost sm" id="addrow">+ 多一行</button></p></div>
+    <div class="card"><h2>照片</h2>
+      <p class="small muted">第一张是封面，会显示在 project 列表和地图上。照片会自动压缩。</p>
+      ${photos.length ? `<div class="photos-edit">${photos.map((f, i) => `<figure><img src="${e(photoUrls[f.storage_path] || "")}" alt="">
+        <figcaption><label style="display:inline;margin:0"><input type="radio" name="cover" value="${f.id}" style="width:auto" ${i ? "" : "checked"}> 封面</label>
+        <label style="display:inline;margin:0;color:var(--bad)"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label></figcaption></figure>`).join("")}</div>` : ""}
+      <label>上传照片（可以一次选多张）</label><input type="file" id="newphotos" multiple accept="image/*"></div>
     <div class="card"><h2>文件</h2>
       ${files.map(f => `<div><label style="display:inline;color:inherit"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label>
         ${e(f.filename)} <span class="small muted">${e(f.doc_type)}${f.storage_path ? "" : " · Drive"}</span></div>`).join("")}
@@ -728,6 +919,10 @@ async function viewEdit(slug) {
       const f = new FormData(ev.target);
       const row = { name: f.get("name").trim(), drive_url: f.get("drive_url").trim(), updated_at: new Date().toISOString() };
       PROJECT_FIELDS.forEach(k => row[k] = String(f.get(k) || "").trim());
+      const geo = parseLatLng(row.location_url);
+      if (geo) Object.assign(row, geo, { geo_approx: false });
+      else if (row.location_url && row.location_url !== (p?.location_url || "") && /goo\.gl|maps\.app/.test(row.location_url))
+        throw new Error("短链接（maps.app.goo.gl）看不到坐标。请在 Google Maps 电脑版打开地点后复制完整网址，或者在地点上按右键复制坐标。");
       let pid, newSlug;
       if (p) {
         check(await sb.from("projects").update(row).eq("id", p.id), "保存 ");
@@ -746,9 +941,22 @@ async function viewEdit(slug) {
       check(await sb.from("unit_types").delete().eq("project_id", pid), "保存价格 ");
       if (unitRows.length) check(await sb.from("unit_types").insert(unitRows), "保存价格 ");
       for (const box of document.querySelectorAll("[data-delfile]:checked")) {
-        const file = files.find(x => x.id === +box.dataset.delfile);
+        const file = files.concat(photos).find(x => x.id === +box.dataset.delfile);
         if (file.storage_path) await sb.storage.from("docs").remove([file.storage_path]);
         check(await sb.from("files").delete().eq("id", file.id), "删除文件 ");
+      }
+      const cover = photos.find(x => x.id === +f.get("cover"));
+      if (cover && cover !== photos[0] && !document.querySelector(`[data-delfile="${cover.id}"]:checked`))
+        check(await sb.from("files").update({ sort_order: Math.min(...photos.map(x => x.sort_order)) - 1 }).eq("id", cover.id), "设封面 ");
+      let order = photos.length ? Math.max(...photos.map(x => x.sort_order)) : 0;
+      const newPhotos = [...$("#newphotos").files];
+      for (const [i, file] of newPhotos.entries()) {
+        $("#prog").textContent = `上传照片 ${i + 1}/${newPhotos.length}…`;
+        const img = await shrinkImage(file);
+        const path = `files/${uuid()}${img.ext}`;
+        const s = await sb.storage.from("docs").upload(path, img.blob, { contentType: img.blob.type || undefined });
+        if (s.error) throw new Error(`${file.name} 上传失败：${s.error.message}`);
+        check(await sb.from("files").insert({ project_id: pid, filename: file.name, doc_type: PHOTO, storage_path: path, sort_order: ++order }), "记录照片 ");
       }
       for (const file of $("#newfiles").files) {
         $("#prog").textContent = "上传中：" + file.name;
@@ -766,7 +974,7 @@ async function viewEdit(slug) {
   };
   if ($("#del")) $("#del").onclick = async () => {
     if (!confirm(`确定删除 ${p.name}？所有资料和文件都会删除。`)) return;
-    const paths = files.filter(f => f.storage_path).map(f => f.storage_path);
+    const paths = files.concat(photos).filter(f => f.storage_path).map(f => f.storage_path);
     if (paths.length) await sb.storage.from("docs").remove(paths);
     check(await sb.from("projects").delete().eq("id", p.id), "删除 ");
     location.hash = "#/projects";
