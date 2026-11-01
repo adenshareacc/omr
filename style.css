@@ -174,3 +174,4 @@ body.wide main.wrap { max-width: none; padding: 0; }
 .upd .md ul { margin: 0; padding-left: 18px; }
 .upd .md li { margin: 2px 0; }
 .md a { word-break: break-all; }
+.gallery.empty > * { background: none; cursor: default; }
