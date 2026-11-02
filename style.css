@@ -187,3 +187,9 @@ body.proj main.wrap { max-width: 1320px; }
 .md ul ul { margin: 2px 0 4px; padding-left: 18px; }
 .md li { margin: 3px 0; line-height: 1.5; }
 .section.md ul { padding-left: 20px; }
+
+.plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.plans figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: zoom-in; }
+.plans img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #fff; display: block; border-bottom: 1px solid var(--line); }
+.plans figcaption { padding: 8px 12px; }
+.lightbox img { background: #fff; }

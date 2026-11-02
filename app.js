@@ -35,6 +35,9 @@ const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toStrin
 const ext = name => (name.match(/\.[^.]+$/) || [""])[0].toLowerCase();
 const isAdmin = () => me?.profile?.role === "admin" && me?.profile?.status === "approved";
 const PHOTO = "photo";
+const PLAN = "floor_plan";
+// "Type B（Courtyard）" and "type b" both mean Type B; used to match layouts to price rows.
+const baseType = name => String(name || "").replace(/[（(].*$/, "").trim().toLowerCase();
 // Price comparison & sub-sale records are switched off for now; set true to bring them back.
 const SHOW_COMPARE = false;
 
@@ -451,12 +454,16 @@ async function viewProject(slug) {
   if (!p) { render(`<div class="card"><h1>${T("找不到这个 project", "Project not found")}</h1></div>`); return; }
   const units = p.unit_types.sort((a, b) => a.id - b.id);
   const photos = p.files.filter(f => f.doc_type === PHOTO && f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-  const files = p.files.filter(f => !photos.includes(f))
+  const plans = p.files.filter(f => f.doc_type === PLAN && f.storage_path && f.unit_type).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const files = p.files.filter(f => !photos.includes(f) && !plans.includes(f))
     .sort((a, b) => (b.uploaded_at || "").localeCompare(a.uploaded_at || "") || a.filename.localeCompare(b.filename));
   const updates = p.updates.sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id);
   const comps = SHOW_COMPARE ? await nearbyComparables(p.area) : [];
   const signed = await signUrls(p.files.filter(f => f.storage_path).map(f => f.storage_path));
   const photoUrls = photos.map(f => signed[f.storage_path]).filter(Boolean);
+  const plansOf = name => plans.filter(f => baseType(f.unit_type) === baseType(name)).map(f => signed[f.storage_path]).filter(Boolean);
+  const planGroups = [...new Set(plans.map(f => f.unit_type))].map(t => ({ type: t, urls: plansOf(t) })).filter(g => g.urls.length);
+  const hasPlans = units.some(u => plansOf(u.name).length);
   const sum = unitSummary(units);
   const net = u => u.nett_price || u.spa_price;
   // Only show price-table columns that have data for this project.
@@ -509,14 +516,19 @@ async function viewProject(slug) {
 
     <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
     ${units.length ? `<div class="card table-scroll units"><table>
-      <tr><th>Type</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join("")}${hasAvail ? `<th>${T("可售", "Available")}</th>` : ""}<th></th></tr>
+      <tr><th>Type</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join("")}${hasAvail ? `<th>${T("可售", "Available")}</th>` : ""}${hasPlans ? `<th>Layout</th>` : ""}<th></th></tr>
       ${units.map(u => `<tr>
         <td class="nm"><b>${e(u.name)}</b>${u.notes ? `<div class="small muted">${e(u.notes)}</div>` : ""}</td>
         ${cols.map(c => `<td class="num">${c[1](u)}</td>`).join("")}
         ${hasAvail ? `<td class="nowrap">${e(u.available)}</td>` : ""}
+        ${hasPlans ? `<td>${plansOf(u.name).length ? `<button class="btn ghost sm" data-plan="${e(u.name)}">📐 ${T("看", "View")}</button>` : ""}</td>` : ""}
         <td><button class="btn ghost sm" data-unit="${u.id}" title="${T("计算", "Calculate")}">🧮</button></td></tr>`).join("")}
     </table></div>` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}
     </div>
+    ${planGroups.length ? `<div class="section"><h2>📐 Layout</h2><div class="plans">
+      ${planGroups.map(g => `<figure data-plan="${e(g.type)}"><img src="${e(g.urls[0])}" alt="" loading="lazy">
+        <figcaption><b>${e(g.type)}</b>${g.urls.length > 1 ? ` <span class="small muted">（${g.urls.length} ${T("张", "pages")}）</span>` : ""}</figcaption></figure>`).join("")}
+    </div></div>` : ""}
 
     <div class="section"><h2>🧮 ${T("计算器", "Calculator")}</h2><div class="card">
       <div class="calc">
@@ -565,6 +577,7 @@ async function viewProject(slug) {
   </aside></div>`);
 
   document.querySelectorAll("[data-photo]").forEach(el => el.onclick = () => lightbox(photoUrls, +el.dataset.photo));
+  document.querySelectorAll("[data-plan]").forEach(el => el.onclick = () => lightbox(plansOf(el.dataset.plan), 0));
 
   const n = v => parseFloat(String(v).replace(/,/g, "")) || 0;
   const fmt = v => "RM " + Math.round(v).toLocaleString("en-MY");
@@ -942,8 +955,10 @@ async function viewEdit(slug) {
     files = p.files.sort((a, b) => a.filename.localeCompare(b.filename));
   }
   const photos = files.filter(f => f.doc_type === PHOTO && f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
-  files = files.filter(f => !photos.includes(f));
-  const photoUrls = await signUrls(photos.map(f => f.storage_path));
+  const plans = files.filter(f => f.doc_type === PLAN && f.storage_path && f.unit_type).sort((a, b) => a.unit_type.localeCompare(b.unit_type) || a.sort_order - b.sort_order);
+  files = files.filter(f => !photos.includes(f) && !plans.includes(f));
+  const photoUrls = await signUrls(photos.concat(plans).map(f => f.storage_path));
+  const typeNames = [...new Set(units.map(u => u.name.replace(/[（(].*$/, "").trim()))];
   const v = k => e(p ? p[k] ?? "" : "");
   const n = x => x == null ? "" : Math.round(+x);
   render(`<p class="small"><a href="${p ? "#/p/" + encodeURIComponent(p.slug) : "#/projects"}">← 返回</a></p>
@@ -979,6 +994,13 @@ async function viewEdit(slug) {
         <figcaption><label style="display:inline;margin:0"><input type="radio" name="cover" value="${f.id}" style="width:auto" ${i ? "" : "checked"}> 封面</label>
         <label style="display:inline;margin:0;color:var(--bad)"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label></figcaption></figure>`).join("")}</div>` : ""}
       <label>上传照片（可以一次选多张）</label><input type="file" id="newphotos" multiple accept="image/*"></div>
+    <div class="card"><h2>📐 Layout（每个 type 的平面图）</h2>
+      <p class="small muted">选 type，再选平面图图片（JPG / PNG，一个 type 可以放几张）。网站会在价格表和 Layout 区显示。</p>
+      ${plans.length ? `<div class="photos-edit">${plans.map(f => `<figure><img src="${e(photoUrls[f.storage_path] || "")}" alt="">
+        <figcaption><b>${e(f.unit_type)}</b>
+        <label style="display:inline;margin:0;color:var(--bad)"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label></figcaption></figure>`).join("")}</div>` : ""}
+      <div class="two"><div><label>Type</label><input id="plantype" list="typelist" placeholder="例如 Type A"><datalist id="typelist">${typeNames.map(t => `<option value="${e(t)}">`).join("")}</datalist></div>
+      <div><label>平面图图片</label><input type="file" id="newplans" multiple accept="image/*"></div></div></div>
     <div class="card"><h2>文件</h2>
       ${files.map(f => `<div><label style="display:inline;color:inherit"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label>
         ${e(f.filename)} <span class="small muted">${e(f.doc_type)}${f.storage_path ? "" : " · Drive"}</span></div>`).join("")}
@@ -1026,7 +1048,7 @@ async function viewEdit(slug) {
       check(await sb.from("unit_types").delete().eq("project_id", pid), "保存价格 ");
       if (unitRows.length) check(await sb.from("unit_types").insert(unitRows), "保存价格 ");
       for (const box of document.querySelectorAll("[data-delfile]:checked")) {
-        const file = files.concat(photos).find(x => x.id === +box.dataset.delfile);
+        const file = files.concat(photos, plans).find(x => x.id === +box.dataset.delfile);
         if (file.storage_path) await sb.storage.from("docs").remove([file.storage_path]);
         check(await sb.from("files").delete().eq("id", file.id), "删除文件 ");
       }
@@ -1042,6 +1064,16 @@ async function viewEdit(slug) {
         const s = await sb.storage.from("docs").upload(path, img.blob, { contentType: img.blob.type || undefined });
         if (s.error) throw new Error(`${file.name} 上传失败：${s.error.message}`);
         check(await sb.from("files").insert({ project_id: pid, filename: file.name, doc_type: PHOTO, storage_path: path, sort_order: ++order }), "记录照片 ");
+      }
+      const newPlans = [...$("#newplans").files], planType = $("#plantype").value.trim();
+      if (newPlans.length && !planType) throw new Error("请先填写平面图是哪一个 Type。");
+      for (const [i, file] of newPlans.entries()) {
+        $("#prog").textContent = `上传平面图 ${i + 1}/${newPlans.length}…`;
+        const img = await shrinkImage(file, 2400);
+        const path = `files/${uuid()}${img.ext}`;
+        const s = await sb.storage.from("docs").upload(path, img.blob, { contentType: img.blob.type || undefined });
+        if (s.error) throw new Error(`${file.name} 上传失败：${s.error.message}`);
+        check(await sb.from("files").insert({ project_id: pid, filename: `${planType} layout`, doc_type: PLAN, unit_type: planType, storage_path: path, sort_order: i + 1 }), "记录平面图 ");
       }
       for (const file of $("#newfiles").files) {
         $("#prog").textContent = "上传中：" + file.name;
@@ -1059,7 +1091,7 @@ async function viewEdit(slug) {
   };
   if ($("#del")) $("#del").onclick = async () => {
     if (!confirm(`确定删除 ${p.name}？所有资料和文件都会删除。`)) return;
-    const paths = files.concat(photos).filter(f => f.storage_path).map(f => f.storage_path);
+    const paths = files.concat(photos, plans).filter(f => f.storage_path).map(f => f.storage_path);
     if (paths.length) await sb.storage.from("docs").remove(paths);
     check(await sb.from("projects").delete().eq("id", p.id), "删除 ");
     location.hash = "#/projects";
