@@ -55,14 +55,24 @@ async function signUrls(paths) {
 // Coordinates from a Google Maps link, or typed as "3.0412, 101.4523".
 function parseLatLng(s) {
   s = String(s || "");
-  const m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  const m = s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || s.match(/\/(?:search|place|dir\/[^/]*)\/(-?\d+\.\d+),\+?\s*(-?\d+\.\d+)/)
+    || s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
     || s.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i)
     || s.match(/^\s*(-?\d{1,2}\.\d+)\s*,\s*(-?\d{2,3}\.\d+)\s*$/);
   return m ? { lat: +m[1], lng: +m[2] } : null;
 }
 
 const hasGeo = p => p.lat != null && p.lng != null;
-const mapsLink = p => hasGeo(p) ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}` : p.location_url;
+
+// Coordinates for a pasted Google Maps link; short links (maps.app.goo.gl) are opened by the resolve-map function.
+async function locate(link) {
+  const direct = parseLatLng(link);
+  if (direct || !/^https:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/kgs)\//.test(link || "")) return direct;
+  const { data } = await sb.functions.invoke("resolve-map", { body: { url: link } });
+  return data?.url ? parseLatLng(data.url) : null;
+}
+// The admin's own Google Maps link wins; coordinates are only a fallback.
+const mapsLink = p => p.location_url || (hasGeo(p) ? `https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}` : "");
 
 // Price and size ranges across a project's unit types, for cards and the spec grid.
 function unitSummary(units) {
@@ -212,7 +222,7 @@ async function route() {
   const hash = location.hash || "#/";
   flash("");
   setHero("");
-  document.body.classList.remove("wide");
+  document.body.classList.remove("wide", "proj");
   if (listMap) { listMap.remove(); listMap = null; }
   if (!me) await loadMe();
   if (me && /^#\/(login|register)$/.test(hash)) {
@@ -434,6 +444,7 @@ async function nearbyComparables(area) {
 }
 
 async function viewProject(slug) {
+  document.body.classList.add("proj");
   const res = await sb.from("projects").select("*, unit_types(*), files(*), updates(*)").eq("slug", slug).maybeSingle();
   check(res, "读取 project ");
   const p = res.data;
@@ -447,6 +458,17 @@ async function viewProject(slug) {
   const signed = await signUrls(p.files.filter(f => f.storage_path).map(f => f.storage_path));
   const photoUrls = photos.map(f => signed[f.storage_path]).filter(Boolean);
   const sum = unitSummary(units);
+  const net = u => u.nett_price || u.spa_price;
+  // Only show price-table columns that have data for this project.
+  const cols = [
+    ["Land sf", u => num(u.land_sf), units.some(u => u.land_sf)],
+    ["BU sf", u => num(u.bu_sf), units.some(u => u.bu_sf)],
+    ["SPA", u => rm(u.spa_price), units.some(u => u.spa_price)],
+    ["Nett", u => rm(u.nett_price), units.some(u => u.nett_price)],
+    ["RM psf (BU)", u => num(psf(net(u), u.bu_sf)), units.some(u => net(u) && u.bu_sf)],
+    ["RM psf (land)", u => num(psf(net(u), u.land_sf)), units.some(u => net(u) && u.land_sf)],
+  ].filter(c => c[2]);
+  const hasAvail = units.some(u => u.available);
   const none = `<p class="muted">${T("暂无资料", "No details yet")}</p>`;
   const spec = (label, value) => value ? `<div><span>${label}</span><b>${e(value)}</b></div>` : "";
   const shown = photoUrls.slice(0, 5);
@@ -486,15 +508,13 @@ async function viewProject(slug) {
     <div class="section md"><h2>🎁 Package</h2>${md(T(p.package_md, p.package_md_en || p.package_md)) || none}</div>
 
     <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
-    ${units.length ? `<div class="card table-scroll"><table>
-      <tr><th>Type</th><th class="num">Land sf</th><th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th class="num">RM psf (BU)</th><th class="num">RM psf (land)</th><th>Available</th><th></th></tr>
-      ${units.map(u => { const price = u.nett_price || u.spa_price; return `<tr>
-        <td><b>${e(u.name)}</b>${u.notes ? `<div class="small muted">${e(u.notes)}</div>` : ""}</td>
-        <td class="num">${num(u.land_sf)}</td><td class="num">${num(u.bu_sf)}</td>
-        <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td>
-        <td class="num">${num(psf(price, u.bu_sf))}</td><td class="num">${num(psf(price, u.land_sf))}</td>
-        <td>${e(u.available)}</td>
-        <td><button class="btn ghost sm" data-unit="${u.id}">${T("计算", "Calculate")}</button></td></tr>`; }).join("")}
+    ${units.length ? `<div class="card table-scroll units"><table>
+      <tr><th>Type</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join("")}${hasAvail ? `<th>${T("可售", "Available")}</th>` : ""}<th></th></tr>
+      ${units.map(u => `<tr>
+        <td class="nm"><b>${e(u.name)}</b>${u.notes ? `<div class="small muted">${e(u.notes)}</div>` : ""}</td>
+        ${cols.map(c => `<td class="num">${c[1](u)}</td>`).join("")}
+        ${hasAvail ? `<td class="nowrap">${e(u.available)}</td>` : ""}
+        <td><button class="btn ghost sm" data-unit="${u.id}" title="${T("计算", "Calculate")}">🧮</button></td></tr>`).join("")}
     </table></div>` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}
     </div>
 
@@ -935,8 +955,8 @@ async function viewEdit(slug) {
       <div><label>类型</label><input name="category" value="${v("category")}" placeholder="Semi-D Factory / Link Factory / Industrial Land"></div>
       <div><label>地契</label><input name="tenure" value="${v("tenure")}" placeholder="Freehold / 99-year Leasehold"></div>
       <div><label>状态</label><select name="status">${Object.entries(STATUS_LABEL).map(([k, l]) => `<option value="${k}" ${p && p.status === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-      <div><label>Google Maps 链接或坐标</label><input name="location_url" value="${v("location_url")}" placeholder="https://www.google.com/maps/place/… 或 3.0412, 101.4523">
-        <div class="small muted" style="margin-top:4px">在 Google Maps 电脑版找到地点，复制网址贴进来；或在地点上按右键，点第一行的数字（坐标）复制贴上。${p && hasGeo(p) ? `现在：${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}${p.geo_approx ? "（大约位置）" : ""}` : ""}</div></div>
+      <div><label>Google Maps 链接（按「分享」→「复制链接」贴上来；地图标记会跟着这个链接）</label><input name="location_url" value="${v("location_url")}" placeholder="https://www.google.com/maps/place/… 或 3.0412, 101.4523">
+        <div class="small muted" style="margin-top:4px">手机或电脑的 Google Maps 都可以：找到地点 → 分享 → 复制链接，例如 https://maps.app.goo.gl/…；也可以直接贴坐标。${p && hasGeo(p) ? `现在：${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}${p.geo_approx ? "（大约位置）" : ""}` : ""}</div></div>
       <div><label>Google Drive 文件夹</label><input name="drive_url" value="${v("drive_url")}"></div>
     </div>
     <label>地点与基本资料（Markdown，每行 "- " 开头）</label><textarea name="info_md" rows="10">${v("info_md")}</textarea>
@@ -984,10 +1004,10 @@ async function viewEdit(slug) {
       if (p) Object.entries(EN_OF).forEach(([zh, en]) => {
         if (row[zh] !== (p[zh] || "").trim() && row[en] === (p[en] || "").trim()) row[en] = "";
       });
-      const geo = parseLatLng(row.location_url);
+      const geo = await locate(row.location_url);
       if (geo) Object.assign(row, geo, { geo_approx: false });
-      else if (row.location_url && row.location_url !== (p?.location_url || "") && /goo\.gl|maps\.app/.test(row.location_url))
-        throw new Error("短链接（maps.app.goo.gl）看不到坐标。请在 Google Maps 电脑版打开地点后复制完整网址，或者在地点上按右键复制坐标。");
+      else if (row.location_url && row.location_url !== (p?.location_url || ""))
+        throw new Error("这个 Google Maps 链接读不到位置。请在 Google Maps 按「分享」→「复制链接」再贴一次。");
       let pid, newSlug;
       if (p) {
         check(await sb.from("projects").update(row).eq("id", p.id), "保存 ");
