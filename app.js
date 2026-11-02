@@ -4,7 +4,7 @@
 const SITE = "OMR Aden Foo Group";
 const PROJECT_FIELDS = ["area", "developer", "tenure", "category", "status", "location_url",
   "info_md", "package_md", "blast_template"];
-const STATUS_LABEL = { selling: "Selling", sold_out: "Sold out", upcoming: "Upcoming" };
+const STATUS_LABEL = { selling: "Selling", upcoming: "Upcoming", on_hold: "On hold", sold_out: "Sold out" };
 const DOC_TYPES = ["sales_kit", "price_list", "availability", "brochure", "floor_plan", "other"];
 const ALLOWED = [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".xlsx", ".xlsm", ".zip", ".txt", ".md", ".csv"];
 
@@ -450,6 +450,7 @@ async function viewProject(slug) {
     <div class="loc">📍 ${e(p.area || "—")}</div>
     <div class="bigprice">${sum.from_price ? `<span class="small muted" style="font-weight:400">由</span> ${rm(sum.from_price)} <span class="small muted" style="font-weight:400">起</span>` : `<span class="muted" style="font-size:18px">价格待更新</span>`}</div>
     <div>${badge(p.status)}</div>
+    ${p.status === "on_hold" ? `<div class="flash" style="margin-top:12px">发展商目前暂停推出这个 project，暂时不要向客户推。</div>` : ""}
     <div class="specs">
       ${spec("地契 Tenure", p.tenure)}${spec("类型 Type", p.category)}${spec("发展商 Developer", p.developer)}
       ${spec("建筑面积 Built-up", sum.bu_range && sum.bu_range + " sf")}${spec("土地面积 Land", sum.land_range && sum.land_range + " sf")}
