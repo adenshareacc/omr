@@ -324,6 +324,9 @@ async function viewProjects() {
   const urls = await signUrls(Object.values(photos).map(a => a[0]));
   const projects = res.data.map(p => ({ ...p, ...unitSummary(p.unit_types),
     cover: photos[p.id] ? urls[photos[p.id][0]] : null, nphotos: (photos[p.id] || []).length }));
+  // Projects agents can still sell come first; on hold, then sold out, go to the bottom.
+  const LAST = { on_hold: 1, sold_out: 2 };
+  projects.sort((a, b) => (LAST[a.status] || 0) - (LAST[b.status] || 0));
   const areas = [...new Set(projects.map(p => p.area).filter(Boolean))].sort();
   const cats = [...new Set(projects.map(p => p.category).filter(Boolean))].sort();
   let saved = {};
