@@ -688,7 +688,13 @@ async function applyChange(ch, upload) {
       .eq("upload_id", ch.upload_id).eq("project_name", ch.project_name).is("project_id", null), "更新审批项目 ");
     return;
   }
-  if (!ch.project_id) throw new Error("请先批准「新增 project」。");
+  if (!ch.project_id) {
+    // The new project may have been approved from another upload; link to it by name.
+    const { data: found } = await sb.from("projects").select("id").eq("name", ch.project_name).maybeSingle();
+    if (!found) throw new Error("请先批准「新增 project」。");
+    ch.project_id = found.id;
+    check(await sb.from("changes").update({ project_id: found.id }).eq("id", ch.id), "更新审批项目 ");
+  }
   if (PROJECT_FIELDS.includes(ch.field)) {
     const geo = ch.field === "location_url" && parseLatLng(ch.new_value);
     check(await sb.from("projects").update({ [ch.field]: ch.new_value, ...(geo ? { ...geo, geo_approx: false } : {}), updated_at: now })
