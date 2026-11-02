@@ -643,11 +643,13 @@ async function viewUpload() {
   const pendingCount = {};
   (ch.data || []).forEach(c => { pendingCount[c.upload_id] = (pendingCount[c.upload_id] || 0) + 1; });
   render(`<h1>上传资料，让 AI 整理</h1>
-    <p class="muted">可以一次上传多个文件：PDF sales kit / price list / availability、截图、Excel，或者 WhatsApp「Export Chat」的 .zip（每个最多 50 MB）。</p>
+    <p class="muted">可以一次上传多个文件：PDF sales kit / price list / availability、截图、Excel，或者 WhatsApp「Export Chat」的 .zip（每个最多 50 MB）。也可以贴发展商给的 Google Drive / Google Sheet 链接。</p>
     <div class="flash">上传之后，在 Mac 的 Claude app 里说<b>「整理资料」</b>。Claude 整理好之后，文件会变成「等你审批」。</div>
     <div class="card"><form id="f">
       <label>文件（PDF、PNG/JPG、XLSX、ZIP、TXT）</label>
-      <input type="file" name="files" multiple required accept="${ALLOWED.join(",")}">
+      <input type="file" name="files" multiple accept="${ALLOWED.join(",")}">
+      <label>或者贴链接（Google Drive 文件夹 / 文件、Google Sheet、发展商网页；一行一个）</label>
+      <textarea name="links" rows="3" style="min-height:0" placeholder="https://drive.google.com/drive/folders/..."></textarea>
       <label>给 AI 的备注（可选）</label>
       <input name="note" placeholder="例如：这是 Tenda Phase 2 最新 price list，8 Oct 2026">
       <p><button class="btn" type="submit">上传</button> <span id="prog" class="small muted"></span></p>
@@ -656,7 +658,7 @@ async function viewUpload() {
     <div class="card table-scroll"><table>
       <tr><th>文件</th><th>上传时间</th><th>状态</th><th></th></tr>
       ${up.data.map(u => `<tr>
-        <td>${e(u.filename)}${u.note ? `<div class="small muted">${e(u.note)}</div>` : ""}${u.error ? `<div class="small" style="color:var(--bad)">${e(u.error)}</div>` : ""}</td>
+        <td>${u.link_url ? `🔗 <a href="${e(u.link_url)}" target="_blank" rel="noopener">${e(u.filename)}</a>` : e(u.filename)}${u.note ? `<div class="small muted">${e(u.note)}</div>` : ""}${u.error ? `<div class="small" style="color:var(--bad)">${e(u.error)}</div>` : ""}</td>
         <td class="small">${e(new Date(u.created_at).toLocaleString("en-MY"))}</td>
         <td><span class="badge ${e(u.status)}">${e(UPLOAD_STATUS[u.status] || u.status)}</span>
           ${pendingCount[u.id] ? `<span class="small muted">${pendingCount[u.id]} 项待批</span>` : ""}</td>
@@ -668,8 +670,20 @@ async function viewUpload() {
     const btn = ev.target.querySelector("button");
     const note = ev.target.note.value.trim();
     const files = [...ev.target.files.files];
+    const links = ev.target.links.value.split(/\s+/).map(s => s.trim()).filter(Boolean);
+    const bad = links.filter(l => !/^https?:\/\//i.test(l));
+    if (bad.length) { flash(`这些不是网址：${bad.join("、")}`, true); return; }
+    if (!files.length && !links.length) { flash("请选择文件或贴上链接。", true); return; }
     btn.disabled = true;
     let done = 0;
+    for (const link of links) {
+      const host = link.replace(/^https?:\/\//i, "").split("/")[0];
+      const label = /docs\.google\.com\/spreadsheets/.test(link) ? "Google Sheet 链接"
+        : /drive\.google\.com\/drive\/(u\/\d+\/)?folders/.test(link) ? "Google Drive 文件夹链接"
+        : /drive\.google\.com|docs\.google\.com/.test(link) ? "Google Drive 文件链接" : `${host} 链接`;
+      check(await sb.from("uploads").insert({ filename: label, link_url: link, storage_path: "", note, status: "inbox" }), "记录链接 ");
+      done++;
+    }
     for (const file of files) {
       if (!ALLOWED.includes(ext(file.name))) { flash(`${file.name}：不支持这个格式。`, true); continue; }
       $("#prog").textContent = `上传中 ${done + 1}/${files.length}：${file.name}`;
@@ -680,7 +694,7 @@ async function viewUpload() {
       done++;
     }
     btn.disabled = false;
-    if (done) { await viewUpload(); flash(`已上传 ${done} 个文件。在 Claude 里说「整理资料」，整理好之后会出现在下面等你审批。`); }
+    if (done) { await viewUpload(); flash(`已加入 ${done} 项。在 Claude 里说「整理资料」，整理好之后会出现在下面等你审批。`); }
   };
 }
 
@@ -747,7 +761,7 @@ async function viewReview(id) {
   const pending = changes.filter(x => x.status === "pending");
   const summary = upload.ai_result?.summary || "";
   render(`<p class="small"><a href="#/admin/upload">← 上传列表</a></p>
-    <h1>${e(upload.filename)}</h1>${summary ? `<p>${e(summary)}</p>` : ""}
+    <h1>${e(upload.filename)}</h1>${upload.link_url ? `<p>🔗 <a href="${e(upload.link_url)}" target="_blank" rel="noopener">${e(upload.link_url)}</a></p>` : ""}${summary ? `<p>${e(summary)}</p>` : ""}
     ${pending.length ? `<p><button class="btn ok" id="all-ok">全部批准（${pending.length}）</button> <button class="btn bad" id="all-no">全部拒绝</button></p>`
       : (!changes.length ? `<p class="muted">没有找到新的 project 资料。</p>` : "")}
     ${changes.map(ch => {
