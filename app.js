@@ -2,6 +2,10 @@
 "use strict";
 
 const SITE = "OMR Aden Foo Group";
+// Interface language for agents (中文 / English); admin pages stay in Chinese.
+let lang = "zh";
+try { lang = localStorage.getItem("omr_lang") === "en" ? "en" : "zh"; } catch {}
+const T = (zh, en) => (lang === "en" ? en : zh);
 const PROJECT_FIELDS = ["area", "developer", "tenure", "category", "status", "location_url",
   "info_md", "package_md", "blast_template"];
 const STATUS_LABEL = { selling: "Selling", upcoming: "Upcoming", on_hold: "On hold", sold_out: "Sold out" };
@@ -84,8 +88,8 @@ function tenureChip(tenure) {
 function lightbox(urls, i) {
   const box = document.createElement("div");
   box.className = "lightbox";
-  const show = () => { box.innerHTML = `<img src="${e(urls[i])}" alt=""><button class="x" aria-label="关闭">×</button>
-    ${urls.length > 1 ? `<button class="prev" aria-label="上一张">‹</button><button class="next" aria-label="下一张">›</button>` : ""}
+  const show = () => { box.innerHTML = `<img src="${e(urls[i])}" alt=""><button class="x" aria-label="${T("关闭", "Close")}">×</button>
+    ${urls.length > 1 ? `<button class="prev" aria-label="${T("上一张", "Previous")}">‹</button><button class="next" aria-label="${T("下一张", "Next")}">›</button>` : ""}
     <div class="n">${i + 1} / ${urls.length}</div>`; };
   const go = d => { i = (i + d + urls.length) % urls.length; show(); };
   const close = () => { box.remove(); document.removeEventListener("keydown", key); };
@@ -163,12 +167,13 @@ function renderNav() {
   if (me && me.profile.status === "approved") {
     html += link("#/projects", "Projects") + (SHOW_COMPARE ? link("#/compare", "价格对比") : "");
     if (isAdmin()) html += link("#/admin/upload", "上传资料") + link("#/admin/users", "Agents") + (SHOW_COMPARE ? link("#/admin/comparables", "成交记录") : "");
-    html += `<a href="#/logout">登出</a>`;
+    html += `<a href="#/logout">${T("登出", "Log out")}</a>`;
   } else if (me) {
-    html += `<a href="#/logout">登出</a>`;
+    html += `<a href="#/logout">${T("登出", "Log out")}</a>`;
   } else {
-    html += `<a href="#/login">登录</a>`;
+    html += `<a href="#/login">${T("登录", "Log in")}</a>`;
   }
+  html += `<a href="#" id="lang" class="lang">${lang === "en" ? "中文" : "EN"}</a>`;
   $("#nav").innerHTML = html;
 }
 
@@ -211,18 +216,18 @@ async function route() {
     if (!m) continue;
     if (access !== "public" && !me) { location.hash = "#/login"; return; }
     if ((access === "approved" || access === "admin") && me.profile.status !== "approved") { location.hash = "#/pending"; return; }
-    if (access === "admin" && !isAdmin()) { render(`<div class="card"><h1>没有权限</h1></div>`); return; }
+    if (access === "admin" && !isAdmin()) { render(`<div class="card"><h1>${T("没有权限", "No access")}</h1></div>`); return; }
     renderNav();
-    render(`<div class="loading">载入中…</div>`);
+    render(`<div class="loading">${T("载入中…", "Loading…")}</div>`);
     try {
       await view(...m.slice(1).map(x => x && decodeURIComponent(x)));
     } catch (err) {
       console.error(err);
-      render(`<div class="card"><h1>出错了</h1><p>${e(err.message)}</p></div>`);
+      render(`<div class="card"><h1>${T("出错了", "Something went wrong")}</h1><p>${e(err.message)}</p></div>`);
     }
     return;
   }
-  render(`<div class="card"><h1>找不到这个页面</h1><p><a href="#/">回首页</a></p></div>`);
+  render(`<div class="card"><h1>${T("找不到这个页面", "Page not found")}</h1><p><a href="#/">${T("回首页", "Back to home")}</a></p></div>`);
 }
 
 // ---------- public views ----------
@@ -230,44 +235,44 @@ function viewHome() {
   if (me && me.profile.status === "approved") { location.hash = "#/projects"; return; }
   setHero(`<section class="hero"><div class="wrap">
     <h1>${SITE}</h1>
-    <p>工厂、工业地与店铺 project 资料中心：项目资料、最新价格与 package、available unit、地图位置和 sales kit 下载，都在这里。</p>
+    <p>${T("工厂、工业地与店铺 project 资料中心：项目资料、最新价格与 package、available unit、地图位置和 sales kit 下载，都在这里。", "Your hub for factory, industrial land and shoplot projects: project details, latest prices and packages, available units, locations and sales kit downloads, all in one place.")}</p>
     <p style="margin-top:24px">
-      <a class="btn" style="background:var(--accent);border-color:var(--accent);color:#18202b" href="#/login">Agent 登录</a>
-      <a class="btn ghost" style="color:#fff;border-color:#fff;margin-left:8px" href="#/register">申请账号</a>
+      <a class="btn" style="background:var(--accent);border-color:var(--accent);color:#18202b" href="#/login">${T("Agent 登录", "Agent login")}</a>
+      <a class="btn ghost" style="color:#fff;border-color:#fff;margin-left:8px" href="#/register">${T("申请账号", "Request access")}</a>
     </p></div></section>`);
   render(`<div class="grid">
-    <div class="card"><h2>📍 项目资料</h2><p class="muted">地点、规格、地契、完工日期等完整资料。</p></div>
-    <div class="card"><h2>💰 价格与 Package</h2><p class="muted">最新 SPA / nett 价格、rebate，还有一键复制的 blasting template。</p></div>
-    <div class="card"><h2>📄 Sales Kit 下载</h2><p class="muted">Brochure、price list、availability chart。</p></div>
-    <div class="card"><h2>🗺 地图找 Project</h2><p class="muted">在地图上看所有 project 的位置，一键 Google Maps / Waze 导航。</p></div>
-  </div><p class="muted small">账号需要经过管理员批准才能查看资料。</p>`);
+    <div class="card"><h2>📍 ${T("项目资料", "Project details")}</h2><p class="muted">${T("地点、规格、地契、完工日期等完整资料。", "Location, specs, tenure, completion date and more.")}</p></div>
+    <div class="card"><h2>💰 ${T("价格与 Package", "Prices & packages")}</h2><p class="muted">${T("最新 SPA / nett 价格、rebate，还有一键复制的 blasting template。", "Latest SPA / nett prices, rebates and a one-tap blasting template.")}</p></div>
+    <div class="card"><h2>📄 ${T("Sales Kit 下载", "Sales kit downloads")}</h2><p class="muted">${T("Brochure、price list、availability chart。", "Brochures, price lists and availability charts.")}</p></div>
+    <div class="card"><h2>🗺 ${T("地图找 Project", "Projects on the map")}</h2><p class="muted">${T("在地图上看所有 project 的位置，一键 Google Maps / Waze 导航。", "See every project on the map and navigate with Google Maps or Waze in one tap.")}</p></div>
+  </div><p class="muted small">${T("账号需要经过管理员批准才能查看资料。", "Accounts need admin approval before project details can be viewed.")}</p>`);
 }
 
 function viewLogin() {
-  render(`<div class="card auth"><h1>Agent 登录</h1>
+  render(`<div class="card auth"><h1>${T("Agent 登录", "Agent login")}</h1>
     <form id="f"><label>Email</label><input name="email" type="email" required autofocus>
-    <label>密码</label><input name="password" type="password" required>
-    <p><button class="btn" type="submit">登录</button></p></form>
-    <p class="small muted">还没有账号？<a href="#/register">申请账号</a></p></div>`);
+    <label>${T("密码", "Password")}</label><input name="password" type="password" required>
+    <p><button class="btn" type="submit">${T("登录", "Log in")}</button></p></form>
+    <p class="small muted">${T("还没有账号？", "No account yet? ")}<a href="#/register">${T("申请账号", "Request access")}</a></p></div>`);
   $("#f").onsubmit = async ev => {
     ev.preventDefault();
     const f = new FormData(ev.target);
     const { error } = await sb.auth.signInWithPassword({ email: f.get("email").trim(), password: f.get("password") });
-    if (error) { flash("Email 或密码不正确。"); return; }
+    if (error) { flash(T("Email 或密码不正确。", "Wrong email or password.")); return; }
     await loadMe();
     location.hash = me.profile.status === "approved" ? "#/projects" : "#/pending";
   };
 }
 
 function viewRegister() {
-  render(`<div class="card auth"><h1>申请账号</h1>
-    <p class="muted small">提交后需要等管理员批准，才能查看 project 资料。</p>
-    <form id="f"><label>名字</label><input name="name" required>
+  render(`<div class="card auth"><h1>${T("申请账号", "Request access")}</h1>
+    <p class="muted small">${T("提交后需要等管理员批准，才能查看 project 资料。", "After you submit, an admin needs to approve your account before you can see project details.")}</p>
+    <form id="f"><label>${T("名字", "Name")}</label><input name="name" required>
     <label>Email</label><input name="email" type="email" required>
-    <label>电话（WhatsApp）</label><input name="phone">
-    <label>密码（最少 8 个字符）</label><input name="password" type="password" minlength="8" required>
-    <p><button class="btn" type="submit">提交申请</button></p></form>
-    <p class="small muted">已经有账号？<a href="#/login">登录</a></p></div>`);
+    <label>${T("电话（WhatsApp）", "Phone (WhatsApp)")}</label><input name="phone">
+    <label>${T("密码（最少 8 个字符）", "Password (at least 8 characters)")}</label><input name="password" type="password" minlength="8" required>
+    <p><button class="btn" type="submit">${T("提交申请", "Submit")}</button></p></form>
+    <p class="small muted">${T("已经有账号？", "Already have an account? ")}<a href="#/login">${T("登录", "Log in")}</a></p></div>`);
   $("#f").onsubmit = async ev => {
     ev.preventDefault();
     const f = new FormData(ev.target);
@@ -275,9 +280,9 @@ function viewRegister() {
       email: f.get("email").trim(), password: f.get("password"),
       options: { data: { name: f.get("name").trim(), phone: f.get("phone").trim() } },
     });
-    if (error) { flash("申请失败：" + error.message); return; }
+    if (error) { flash(T("申请失败：", "Could not submit: ") + error.message); return; }
     if (!data.session) {
-      render(`<div class="card auth"><h1>请查看 email</h1><p>我们发了一封确认信到 ${e(f.get("email"))}，按里面的链接确认后再登录。</p></div>`);
+      render(`<div class="card auth"><h1>${T("请查看 email", "Check your email")}</h1><p>${T(`我们发了一封确认信到 ${e(f.get("email"))}，按里面的链接确认后再登录。`, `We sent a confirmation link to ${e(f.get("email"))}. Click it, then log in.`)}</p></div>`);
       return;
     }
     await loadMe();
@@ -294,9 +299,9 @@ async function viewLogout() {
 function viewPending() {
   if (me.profile.status === "approved") { location.hash = "#/projects"; return; }
   render(me.profile.status === "rejected"
-    ? `<div class="card auth"><h1>申请未通过</h1><p class="muted">如有疑问，请联系 Aden Foo。</p></div>`
-    : `<div class="card auth"><h1>等待批准</h1><p>你好 ${e(me.profile.name)}，你的账号已经提交，等管理员批准后就可以查看资料。</p>
-       <p><button class="btn ghost sm" onclick="location.reload()">重新检查</button></p></div>`);
+    ? `<div class="card auth"><h1>${T("申请未通过", "Request not approved")}</h1><p class="muted">${T("如有疑问，请联系 Aden Foo。", "Please contact Aden Foo if you have questions.")}</p></div>`
+    : `<div class="card auth"><h1>${T("等待批准", "Waiting for approval")}</h1><p>${T(`你好 ${e(me.profile.name)}，你的账号已经提交，等管理员批准后就可以查看资料。`, `Hi ${e(me.profile.name)}, your request has been sent. You can see project details once an admin approves it.`)}</p>
+       <p><button class="btn ghost sm" onclick="location.reload()">${T("重新检查", "Check again")}</button></p></div>`);
 }
 
 // ---------- agent views ----------
@@ -334,18 +339,18 @@ async function viewProjects() {
   const opts = (list, cur) => list.map(a => `<option ${a === cur ? "selected" : ""}>${e(a)}</option>`).join("");
   document.body.classList.add("wide");
   render(`<div class="list-bar">
-      <input id="q" placeholder="搜索名字、地区、发展商、类型…" value="${e(saved.q || "")}">
-      <select id="area"><option value="">全部地区</option>${opts(areas, saved.area)}</select>
-      ${cats.length ? `<select id="cat"><option value="">全部类型</option>${opts(cats, saved.cat)}</select>` : ""}
-      <select id="status"><option value="">全部状态</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <input id="q" placeholder="${T("搜索名字、地区、发展商、类型…", "Search name, area, developer, type…")}" value="${e(saved.q || "")}">
+      <select id="area"><option value="">${T("全部地区", "All areas")}</option>${opts(areas, saved.area)}</select>
+      ${cats.length ? `<select id="cat"><option value="">${T("全部类型", "All types")}</option>${opts(cats, saved.cat)}</select>` : ""}
+      <select id="status"><option value="">${T("全部状态", "All statuses")}</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
       ${isAdmin() ? `<a class="btn ghost" href="#/admin/new">+ 新增 project</a>` : ""}
     </div>
     <div class="listing">
-      <div class="results"><h1>工厂、工业地与店铺 Projects</h1><div class="muted small" id="count"></div><div class="cards" id="list"></div></div>
+      <div class="results"><h1>${T("工厂、工业地与店铺 Projects", "Factories, Industrial Land & Shoplots")}</h1><div class="muted small" id="count"></div><div class="cards" id="list"></div></div>
       <div class="mapbox"><div id="map"></div>
-        <label class="map-opt"><input type="checkbox" id="inview" ${saved.inview ? "checked" : ""}> 只显示地图范围内的 project</label></div>
+        <label class="map-opt"><input type="checkbox" id="inview" ${saved.inview ? "checked" : ""}> ${T("只显示地图范围内的 project", "Only show projects in map area")}</label></div>
     </div>
-    <button class="btn view-toggle" id="toggle">🗺 地图</button>`);
+    <button class="btn view-toggle" id="toggle">🗺 ${T("地图", "Map")}</button>`);
   fitListing();
 
   const byId = Object.fromEntries(projects.map(p => [p.id, p]));
@@ -362,7 +367,7 @@ async function viewProjects() {
       m.bindPopup(`<a class="mpop" href="#/p/${encodeURIComponent(p.slug)}" style="display:block;color:inherit;text-decoration:none">
         ${p.cover ? `<img src="${e(p.cover)}" alt="">` : ""}<b>${e(p.name)}</b>
         <span class="small muted">${e([p.category, p.area].filter(Boolean).join(" · "))}</span>
-        ${p.from_price ? `<div style="font-weight:700;margin-top:2px">由 ${rm(p.from_price)} 起</div>` : ""}</a>`);
+        ${p.from_price ? `<div style="font-weight:700;margin-top:2px">${T(`由 ${rm(p.from_price)} 起`, `From ${rm(p.from_price)}`)}</div>` : ""}</a>`);
       markers[p.id] = m;
     });
   }
@@ -383,7 +388,7 @@ async function viewProjects() {
     // On phones the map is hidden behind a toggle; only filter by it while it is on screen.
     const bounds = listMap && inview && $("#map").offsetWidth ? listMap.getBounds() : null;
     const rows = bounds ? matches.filter(p => hasGeo(p) && bounds.contains([p.lat, p.lng])) : matches;
-    $("#count").textContent = `找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`;
+    $("#count").textContent = T(`找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`, `${rows.length} projects found${bounds ? " (in map area)" : ""}`);
     $("#list").innerHTML = rows.map(p => `<a class="lcard" data-id="${p.id}" href="#/p/${encodeURIComponent(p.slug)}">
         <div class="ph">${p.cover ? `<img src="${e(p.cover)}" alt="" loading="lazy">` : `<div class="noimg">${e(p.name)}</div>`}
           <span class="tag ${e(p.status)}">${e(STATUS_LABEL[p.status] || p.status)}</span>
@@ -391,9 +396,9 @@ async function viewProjects() {
         <div class="bd"><div class="kicker">${e(p.category || "Project")}</div>
           <h3>${e(p.name)}</h3>
           <div class="loc">📍 ${e(p.area || "—")}</div>
-          <div class="price-row"><div class="price">${p.from_price ? `<small>由</small> ${rm(p.from_price)} <small>起</small>` : `<small>价格待更新</small>`}</div>${tenureChip(p.tenure)}</div>
-          ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>建筑 <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>土地 <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
-        </div></a>`).join("") || `<p class="muted">找不到符合的 project。${bounds ? "试试把地图拉远，或取消「只显示地图范围内」。" : ""}</p>`;
+          <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div>${tenureChip(p.tenure)}</div>
+          ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>${T("建筑", "Built-up")} <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>${T("土地", "Land")} <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
+        </div></a>`).join("") || `<p class="muted">${T("找不到符合的 project。", "No matching projects. ")}${bounds ? T("试试把地图拉远，或取消「只显示地图范围内」。", "Try zooming the map out, or untick “Only show projects in map area”.") : ""}</p>`;
     document.querySelectorAll(".lcard").forEach(c => {
       const p = byId[c.dataset.id], m = markers[p.id];
       if (!m) return;
@@ -406,7 +411,7 @@ async function viewProjects() {
   let mapShown = innerWidth > 900;
   $("#toggle").onclick = () => {
     const on = $(".listing").classList.toggle("show-map");
-    $("#toggle").textContent = on ? "☰ 列表" : "🗺 地图";
+    $("#toggle").textContent = on ? `☰ ${T("列表", "List")}` : `🗺 ${T("地图", "Map")}`;
     if (listMap) { listMap.invalidateSize(); if (on && !mapShown) { mapShown = true; fitAll(); } }
     draw();
   };
@@ -424,7 +429,7 @@ async function viewProject(slug) {
   const res = await sb.from("projects").select("*, unit_types(*), files(*), updates(*)").eq("slug", slug).maybeSingle();
   check(res, "读取 project ");
   const p = res.data;
-  if (!p) { render(`<div class="card"><h1>找不到这个 project</h1></div>`); return; }
+  if (!p) { render(`<div class="card"><h1>${T("找不到这个 project", "Project not found")}</h1></div>`); return; }
   const units = p.unit_types.sort((a, b) => a.id - b.id);
   const photos = p.files.filter(f => f.doc_type === PHOTO && f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   const files = p.files.filter(f => !photos.includes(f))
@@ -434,14 +439,14 @@ async function viewProject(slug) {
   const signed = await signUrls(p.files.filter(f => f.storage_path).map(f => f.storage_path));
   const photoUrls = photos.map(f => signed[f.storage_path]).filter(Boolean);
   const sum = unitSummary(units);
-  const none = `<p class="muted">暂无资料</p>`;
+  const none = `<p class="muted">${T("暂无资料", "No details yet")}</p>`;
   const spec = (label, value) => value ? `<div><span>${label}</span><b>${e(value)}</b></div>` : "";
   const shown = photoUrls.slice(0, 5);
   const gallery = shown.length
     ? `<div class="gallery n${shown.length}">${shown.map((u, i) => `<div data-photo="${i}"><img src="${e(u)}" alt="" ${i ? `loading="lazy"` : ""}></div>`).join("")}
-        <button class="btn sm all" data-photo="0">📷 查看全部 ${photoUrls.length} 张照片</button></div>`
+        <button class="btn sm all" data-photo="0">📷 ${T(`查看全部 ${photoUrls.length} 张照片`, `View all ${photoUrls.length} photos`)}</button></div>`
     : `<div class="gallery empty"><div><h2 style="margin:0 0 6px">${e(p.name)}</h2>
-        <div class="small">还没有照片${isAdmin() ? `，按「编辑」上传` : ""}</div></div></div>`;
+        <div class="small">${T("还没有照片", "No photos yet")}${isAdmin() ? `，按「编辑」上传` : ""}</div></div></div>`;
   const geo = hasGeo(p);
   const blast = composeBlast(p);
 
@@ -451,28 +456,28 @@ async function viewProject(slug) {
     <div class="kicker">${e([p.category, p.developer].filter(Boolean).join(" · ") || "Project")}</div>
     <h1>${e(p.name)}</h1>
     <div class="loc">📍 ${e(p.area || "—")}</div>
-    <div class="bigprice">${sum.from_price ? `<span class="small muted" style="font-weight:400">由</span> ${rm(sum.from_price)} <span class="small muted" style="font-weight:400">起</span>` : `<span class="muted" style="font-size:18px">价格待更新</span>`}</div>
+    <div class="bigprice">${sum.from_price ? T(`<span class="small muted" style="font-weight:400">由</span> ${rm(sum.from_price)} <span class="small muted" style="font-weight:400">起</span>`, `<span class="small muted" style="font-weight:400">From</span> ${rm(sum.from_price)}`) : `<span class="muted" style="font-size:18px">${T("价格待更新", "Price to be updated")}</span>`}</div>
     <div>${badge(p.status)}</div>
-    ${p.status === "on_hold" ? `<div class="flash" style="margin-top:12px">发展商目前暂停推出这个 project，暂时不要向客户推。</div>` : ""}
+    ${p.status === "on_hold" ? `<div class="flash" style="margin-top:12px">${T("发展商目前暂停推出这个 project，暂时不要向客户推。", "The developer has paused this launch. Please don’t promote it to customers for now.")}</div>` : ""}
     <div class="specs">
-      ${spec("地契 Tenure", p.tenure)}${spec("类型 Type", p.category)}${spec("发展商 Developer", p.developer)}
-      ${spec("建筑面积 Built-up", sum.bu_range && sum.bu_range + " sf")}${spec("土地面积 Land", sum.land_range && sum.land_range + " sf")}
-      ${spec("Unit 类型", units.length ? units.length + " 种" : "")}${spec("最后更新", (p.updated_at || "").slice(0, 10))}
+      ${spec(T("地契", "Tenure"), p.tenure)}${spec(T("类型", "Type"), p.category)}${spec(T("发展商", "Developer"), p.developer)}
+      ${spec(T("建筑面积", "Built-up"), sum.bu_range && sum.bu_range + " sf")}${spec(T("土地面积", "Land area"), sum.land_range && sum.land_range + " sf")}
+      ${spec(T("Unit 类型", "Unit types"), units.length ? units.length + T(" 种", "") : "")}${spec(T("最后更新", "Last updated"), (p.updated_at || "").slice(0, 10))}
     </div>
 
-    <div class="section"><h2>位置</h2>
+    <div class="section"><h2>${T("位置", "Location")}</h2>
       ${geo ? `<iframe class="gmap" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
           src="https://maps.google.com/maps?q=${p.lat},${p.lng}&z=${p.geo_approx ? 13 : 15}&output=embed"></iframe>
-        <p style="margin-top:10px"><a class="btn ghost sm" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank" rel="noopener">Google Maps 导航</a>
+        <p style="margin-top:10px"><a class="btn ghost sm" href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}" target="_blank" rel="noopener">${T("Google Maps 导航", "Google Maps directions")}</a>
           <a class="btn ghost sm" href="https://waze.com/ul?ll=${p.lat},${p.lng}&navigate=yes" target="_blank" rel="noopener">Waze</a></p>
-        ${p.geo_approx ? `<p class="small muted">大约位置（按地区标出）。准确地址请看 sales kit${isAdmin() ? `；管理员可以在「编辑」贴上 Google Maps 链接来修正` : ""}。</p>` : ""}`
-      : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 打开 Google Maps</a></p>` : `<p class="muted">还没有位置资料。</p>`}
+        ${p.geo_approx ? `<p class="small muted">${T("大约位置（按地区标出）。准确地址请看 sales kit", "Approximate location (by area). See the sales kit for the exact address")}${isAdmin() ? `；管理员可以在「编辑」贴上 Google Maps 链接来修正` : ""}${T("。", ".")}</p>` : ""}`
+      : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 ${T("打开 Google Maps", "Open Google Maps")}</a></p>` : `<p class="muted">${T("还没有位置资料。", "No location yet.")}</p>`}
     </div>
 
-    <div class="section md"><h2>项目资料</h2>${md(p.info_md) || none}</div>
+    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(p.info_md) || none}</div>
     <div class="section md"><h2>🎁 Package</h2>${md(p.package_md) || none}</div>
 
-    <div class="section"><h2>Unit 类型与价格</h2>
+    <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
     ${units.length ? `<div class="card table-scroll"><table>
       <tr><th>Type</th><th class="num">Land sf</th><th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th class="num">RM psf (BU)</th><th class="num">RM psf (land)</th><th>Available</th><th></th></tr>
       ${units.map(u => { const price = u.nett_price || u.spa_price; return `<tr>
@@ -481,53 +486,53 @@ async function viewProject(slug) {
         <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td>
         <td class="num">${num(psf(price, u.bu_sf))}</td><td class="num">${num(psf(price, u.land_sf))}</td>
         <td>${e(u.available)}</td>
-        <td><button class="btn ghost sm" data-unit="${u.id}">计算</button></td></tr>`; }).join("")}
-    </table></div>` : `<p class="muted">还没有价格资料。</p>`}
+        <td><button class="btn ghost sm" data-unit="${u.id}">${T("计算", "Calculate")}</button></td></tr>`; }).join("")}
+    </table></div>` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}
     </div>
 
-    <div class="section"><h2>🧮 计算器</h2><div class="card">
+    <div class="section"><h2>🧮 ${T("计算器", "Calculator")}</h2><div class="card">
       <div class="calc">
-        <div><label>SPA 价格 (RM)</label><input id="c_spa" inputmode="decimal"></div>
+        <div><label>${T("SPA 价格 (RM)", "SPA price (RM)")}</label><input id="c_spa" inputmode="decimal"></div>
         <div><label>Rebate %</label><input id="c_rebate" inputmode="decimal" value="0"></div>
         <div><label>Built-up sf</label><input id="c_bu" inputmode="decimal"></div>
         <div><label>Land sf</label><input id="c_land" inputmode="decimal"></div>
         <div><label>Loan margin %</label><input id="c_margin" inputmode="decimal" value="90"></div>
-        <div><label>利率 % p.a.</label><input id="c_rate" inputmode="decimal" value="4.5"></div>
-        <div><label>年限</label><input id="c_years" inputmode="decimal" value="25"></div>
+        <div><label>${T("利率 % p.a.", "Interest % p.a.")}</label><input id="c_rate" inputmode="decimal" value="4.5"></div>
+        <div><label>${T("年限", "Years")}</label><input id="c_years" inputmode="decimal" value="25"></div>
       </div>
       <div class="calc-out" id="c_out"></div>
-      <p class="small muted" style="margin-bottom:0">Loan 按 SPA 价格计算；实际 margin 与利率以银行批准为准。</p>
+      <p class="small muted" style="margin-bottom:0">${T("Loan 按 SPA 价格计算；实际 margin 与利率以银行批准为准。", "Loan is based on the SPA price; actual margin and rate depend on bank approval.")}</p>
     </div></div>
 
     <div class="section"><h2>📢 Blasting Template</h2>
       ${blast ? `<div class="blast">${e(blast)}</div>
-        <p><button class="btn ok sm" data-copy>复制</button>
-        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">用 WhatsApp 发送</a></p>`
-        : `<p class="muted">暂无 blasting template。</p>`}
+        <p><button class="btn ok sm" data-copy>${T("复制", "Copy")}</button>
+        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("用 WhatsApp 发送", "Send via WhatsApp")}</a></p>`
+        : `<p class="muted">${T("暂无 blasting template。", "No blasting template yet.")}</p>`}
     </div>
 
-    <div class="section"><h2>🕒 最新动态</h2>
+    <div class="section"><h2>🕒 ${T("最新动态", "Latest updates")}</h2>
       ${updates.map(u => `<div class="upd"><div class="small muted">${e(u.created_at.slice(0, 10))}${u.source ? " · " + e(u.source) : ""}</div>
-        <div class="md">${md(u.text)}</div></div>`).join("") || `<p class="muted">暂无更新。</p>`}
+        <div class="md">${md(u.text)}</div></div>`).join("") || `<p class="muted">${T("暂无更新。", "No updates yet.")}</p>`}
     </div>
     ${comps.length ? `<div class="section"><h2>📊 附近成交 / Sub-sale（${comps.length}）</h2><div class="card">${compsTable(comps.slice(0, 15))}
       <p style="margin-bottom:0"><a href="#/compare/${encodeURIComponent(p.slug)}">查看完整对比 →</a></p></div></div>` : ""}
   </div>
 
   <aside class="side"><div class="card">
-    <h2>快速操作</h2>
-    ${blast ? `<button class="btn ok" data-copy>复制 Blasting</button>
-      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">WhatsApp 发给客户</a>` : ""}
+    <h2>${T("快速操作", "Quick actions")}</h2>
+    ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>
+      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("WhatsApp 发给客户", "WhatsApp to customer")}</a>` : ""}
     ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
-    ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">Drive 文件夹</a>` : ""}
+    ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">${T("Drive 文件夹", "Drive folder")}</a>` : ""}
     ${isAdmin() ? `<a class="btn" href="#/admin/edit/${encodeURIComponent(p.slug)}">编辑 / 上传照片</a>` : ""}
   </div>
-  <div class="card"><h2>📄 Sales Kit 与文件（${files.length}）</h2>
+  <div class="card"><h2>📄 ${T(`Sales Kit 与文件（${files.length}）`, `Sales kit & files (${files.length})`)}</h2>
     <div class="dl" style="max-height:420px;overflow-y:auto">
     ${files.map(f => { const url = f.storage_path ? signed[f.storage_path] : f.drive_url;
       return `<a ${url ? `href="${e(url)}" target="_blank" rel="noopener"` : ""}>${e(f.filename)}
-        <div class="small muted">${e((f.doc_type || "").replace(/_/g, " "))}${!f.storage_path && f.drive_url ? " · Drive" : ""}</div></a>`; }).join("") || `<p class="muted">暂无文件。</p>`}
+        <div class="small muted">${e((f.doc_type || "").replace(/_/g, " "))}${!f.storage_path && f.drive_url ? " · Drive" : ""}</div></a>`; }).join("") || `<p class="muted">${T("暂无文件。", "No files yet.")}</p>`}
     </div></div>
   </aside></div>`);
 
@@ -540,9 +545,9 @@ async function viewProject(slug) {
     const loan = spa * n($("#c_margin").value) / 100, r = n($("#c_rate").value) / 1200, months = n($("#c_years").value) * 12;
     const nett = spa * (1 - reb);
     const monthly = r && months ? loan * r / (1 - Math.pow(1 + r, -months)) : 0;
-    const stats = [["Nett 价格", fmt(nett)], ["Rebate", fmt(spa - nett)],
+    const stats = [[T("Nett 价格", "Nett price"), fmt(nett)], ["Rebate", fmt(spa - nett)],
       ["RM psf (BU)", bu ? Math.round(nett / bu).toLocaleString() : "–"], ["RM psf (land)", land ? Math.round(nett / land).toLocaleString() : "–"],
-      ["Loan 额", fmt(loan)], ["Downpayment", fmt(Math.max(nett - loan, 0))], ["每月供款", fmt(monthly)]];
+      [T("Loan 额", "Loan amount"), fmt(loan)], ["Downpayment", fmt(Math.max(nett - loan, 0))], [T("每月供款", "Monthly instalment"), fmt(monthly)]];
     $("#c_out").innerHTML = spa ? stats.map(s => `<div class="stat"><span class="small muted">${s[0]}</span><b>${s[1]}</b></div>`).join("") : "";
   };
   document.querySelectorAll(".calc input").forEach(i => i.addEventListener("input", calc));
@@ -555,7 +560,7 @@ async function viewProject(slug) {
   });
   document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(blast).then(() => {
     const was = btn.textContent;
-    btn.textContent = "已复制 ✓"; setTimeout(() => btn.textContent = was, 1500);
+    btn.textContent = T("已复制 ✓", "Copied ✓"); setTimeout(() => btn.textContent = was, 1500);
   }));
 }
 
@@ -1019,6 +1024,15 @@ async function viewEdit(slug) {
     });
   }
   renderNav();
+  document.addEventListener("click", ev => {
+    if (ev.target.id !== "lang") return;
+    ev.preventDefault();
+    lang = lang === "en" ? "zh" : "en";
+    try { localStorage.setItem("omr_lang", lang); } catch {}
+    document.documentElement.lang = lang === "en" ? "en" : "zh";
+    route();
+  });
+  document.documentElement.lang = lang === "en" ? "en" : "zh";
   window.addEventListener("hashchange", route);
   route();
 })();

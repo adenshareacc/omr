@@ -176,3 +176,4 @@ body.wide main.wrap { max-width: none; padding: 0; }
 .upd .md li { margin: 2px 0; }
 .md a { word-break: break-all; }
 .gallery.empty > * { background: none; cursor: default; }
+nav a.lang { border: 1px solid rgba(255,255,255,.5); border-radius: 6px; padding: 1px 8px; opacity: 1; }
