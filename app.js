@@ -7,7 +7,15 @@ let lang = "zh";
 try { lang = localStorage.getItem("omr_lang") === "en" ? "en" : "zh"; } catch {}
 const T = (zh, en) => (lang === "en" ? en : zh);
 const PROJECT_FIELDS = ["area", "developer", "tenure", "category", "status", "location_url",
-  "info_md", "package_md", "blast_template"];
+  "info_md", "package_md", "info_md_en", "package_md_en", "blast_template"];
+// English copies that go stale when their Chinese original changes.
+const EN_OF = { info_md: "info_md_en", package_md: "package_md_en" };
+
+// An update is plain Chinese text, or {"zh": ..., "en": ...} when Claude wrote both.
+function splitUpdate(v) {
+  try { const o = JSON.parse(v); if (o && typeof o === "object" && "zh" in o) return { zh: o.zh || "", en: o.en || "" }; } catch {}
+  return { zh: v || "", en: "" };
+}
 const STATUS_LABEL = { selling: "Selling", upcoming: "Upcoming", on_hold: "On hold", sold_out: "Sold out" };
 const DOC_TYPES = ["sales_kit", "price_list", "availability", "brochure", "floor_plan", "other"];
 const ALLOWED = [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".xlsx", ".xlsm", ".zip", ".txt", ".md", ".csv"];
@@ -474,8 +482,8 @@ async function viewProject(slug) {
       : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 ${T("打开 Google Maps", "Open Google Maps")}</a></p>` : `<p class="muted">${T("还没有位置资料。", "No location yet.")}</p>`}
     </div>
 
-    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(p.info_md) || none}</div>
-    <div class="section md"><h2>🎁 Package</h2>${md(p.package_md) || none}</div>
+    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(T(p.info_md, p.info_md_en || p.info_md)) || none}</div>
+    <div class="section md"><h2>🎁 Package</h2>${md(T(p.package_md, p.package_md_en || p.package_md)) || none}</div>
 
     <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
     ${units.length ? `<div class="card table-scroll"><table>
@@ -513,7 +521,7 @@ async function viewProject(slug) {
 
     <div class="section"><h2>🕒 ${T("最新动态", "Latest updates")}</h2>
       ${updates.map(u => `<div class="upd"><div class="small muted">${e(u.created_at.slice(0, 10))}${u.source ? " · " + e(u.source) : ""}</div>
-        <div class="md">${md(u.text)}</div></div>`).join("") || `<p class="muted">${T("暂无更新。", "No updates yet.")}</p>`}
+        <div class="md">${md(T(u.text, u.text_en || u.text))}</div></div>`).join("") || `<p class="muted">${T("暂无更新。", "No updates yet.")}</p>`}
     </div>
     ${comps.length ? `<div class="section"><h2>📊 附近成交 / Sub-sale（${comps.length}）</h2><div class="card">${compsTable(comps.slice(0, 15))}
       <p style="margin-bottom:0"><a href="#/compare/${encodeURIComponent(p.slug)}">查看完整对比 →</a></p></div></div>` : ""}
@@ -677,7 +685,7 @@ async function viewUpload() {
 }
 
 const FIELD_LABEL = { new_project: "新增 project", area: "地区", developer: "发展商", tenure: "地契", category: "类型", status: "状态",
-  location_url: "地图链接", info_md: "基本资料", package_md: "Package", blast_template: "Blasting template",
+  location_url: "地图链接", info_md: "基本资料", package_md: "Package", info_md_en: "基本资料（英文）", package_md_en: "Package（英文）", blast_template: "Blasting template",
   unit_types: "Unit 类型与价格", update: "动态记录", file: "附上文件" };
 
 function unitsTable(units) {
@@ -706,7 +714,8 @@ async function applyChange(ch, upload) {
   }
   if (PROJECT_FIELDS.includes(ch.field)) {
     const geo = ch.field === "location_url" && parseLatLng(ch.new_value);
-    check(await sb.from("projects").update({ [ch.field]: ch.new_value, ...(geo ? { ...geo, geo_approx: false } : {}), updated_at: now })
+    const stale = EN_OF[ch.field] ? { [EN_OF[ch.field]]: "" } : {};
+    check(await sb.from("projects").update({ ...stale, [ch.field]: ch.new_value, ...(geo ? { ...geo, geo_approx: false } : {}), updated_at: now })
       .eq("id", ch.project_id), "更新资料 ");
   } else if (ch.field === "unit_types") {
     const units = JSON.parse(ch.new_value).map(u => ({ project_id: ch.project_id, name: u.name, land_sf: u.land_sf ?? null,
@@ -715,7 +724,8 @@ async function applyChange(ch, upload) {
     if (units.length) check(await sb.from("unit_types").insert(units), "写入新价格 ");
     check(await sb.from("projects").update({ updated_at: now }).eq("id", ch.project_id), "更新日期 ");
   } else if (ch.field === "update") {
-    check(await sb.from("updates").insert({ project_id: ch.project_id, text: ch.new_value, source: upload.filename }), "写入动态 ");
+    const u = splitUpdate(ch.new_value);
+    check(await sb.from("updates").insert({ project_id: ch.project_id, text: u.zh, text_en: u.en, source: upload.filename }), "写入动态 ");
   } else if (ch.field === "file") {
     const meta = JSON.parse(ch.new_value);
     const dest = `files/${uuid()}${ext(upload.storage_path)}`;
@@ -745,7 +755,8 @@ async function viewReview(id) {
       if (ch.field === "unit_types") body = `<div class="diff"><div class="old table-scroll"><div class="small muted">现在</div>${unitsTable(JSON.parse(ch.old_value || "[]"))}</div>
           <div class="new table-scroll"><div class="small muted">AI 建议</div>${unitsTable(JSON.parse(ch.new_value || "[]"))}</div></div>`;
       else if (ch.field === "new_project") body = `<p>AI 认为这是一个新的 project：<b>${e(ch.new_value)}</b>。批准后会建立新的 project 页面。如果其实是现有的 project，请拒绝，然后告诉 Claude 正确的名字。</p>`;
-      else if (ch.field === "update") body = `<div class="diff"><div class="new md" style="grid-column:1/-1">${md(ch.new_value)}</div></div>`;
+      else if (ch.field === "update") { const u = splitUpdate(ch.new_value);
+        body = `<div class="diff"><div class="new md" style="grid-column:1/-1">${md(u.zh)}${u.en ? `<hr><div class="small muted">English</div>${md(u.en)}` : ""}</div></div>`; }
       else if (ch.field === "file") { const m = JSON.parse(ch.new_value); body = `<p>把 <b>${e(m.filename)}</b> 加到文件下载（${e(m.doc_type)}）。</p>`; }
       else body = `<div class="diff"><div class="old"><div class="small muted">现在</div>${md(ch.old_value) || `<span class="muted">（空）</span>`}</div>
           <div class="new"><div class="small muted">AI 建议${ch.status === "pending" ? "（可以直接修改）" : ""}</div>
@@ -916,6 +927,8 @@ async function viewEdit(slug) {
     </div>
     <label>地点与基本资料（Markdown，每行 "- " 开头）</label><textarea name="info_md" rows="10">${v("info_md")}</textarea>
     <label>Package（rebate、booking、promotion）</label><textarea name="package_md" rows="6">${v("package_md")}</textarea>
+    <label>基本资料 — 英文版（agent 切换到 EN 时显示；留空就显示中文。改了中文、没改英文的话，英文会自动清空，避免旧资料）</label><textarea name="info_md_en" rows="8">${v("info_md_en")}</textarea>
+    <label>Package — 英文版</label><textarea name="package_md_en" rows="5">${v("package_md_en")}</textarea>
     <label>Blasting template（不用写 Location Map 和名字电话，复制时会自动加上发送者自己的名字电话）</label><textarea name="blast_template" rows="14">${v("blast_template")}</textarea></div>
     <div class="card table-scroll"><h2>Unit 类型与价格</h2>
       <p class="small muted">价格可以写 2.41mil、2410000 或 2,410,000。名字留空的行会被删除。</p>
@@ -953,6 +966,10 @@ async function viewEdit(slug) {
       const f = new FormData(ev.target);
       const row = { name: f.get("name").trim(), drive_url: f.get("drive_url").trim(), updated_at: new Date().toISOString() };
       PROJECT_FIELDS.forEach(k => row[k] = String(f.get(k) || "").trim());
+      // Chinese changed but its English copy was left as it was: drop the outdated English.
+      if (p) Object.entries(EN_OF).forEach(([zh, en]) => {
+        if (row[zh] !== (p[zh] || "").trim() && row[en] === (p[en] || "").trim()) row[en] = "";
+      });
       const geo = parseLatLng(row.location_url);
       if (geo) Object.assign(row, geo, { geo_approx: false });
       else if (row.location_url && row.location_url !== (p?.location_url || "") && /goo\.gl|maps\.app/.test(row.location_url))
