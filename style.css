@@ -111,6 +111,26 @@ body.wide main.wrap { max-width: none; padding: 0; }
 .chip.lease { background: #fff4e0; color: var(--warn); }
 .sizes { display: flex; gap: 14px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 8px; margin-top: 8px; }
 .sizes b { color: var(--ink); font-weight: 600; }
+.specline { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.specline b { color: var(--ink); font-weight: 600; }
+.cmp-btn { align-self: flex-start; margin-top: 8px; font: inherit; font-size: 13px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 99px; background: #fff; color: var(--brand); cursor: pointer; }
+.cmp-btn:hover { border-color: var(--brand); }
+.cmp-btn.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.vs { padding: 16px; }
+.vs h1 { margin: 0 0 4px; }
+.vs-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 12px 0 16px; }
+.vs-pick label { flex: 1 1 220px; font-size: 13px; font-weight: 600; }
+.vs-table { background: var(--card); border: 1px solid var(--line); min-width: 640px; table-layout: fixed; }
+.vs-table thead th:first-child { width: 150px; }
+.vs-table th[scope="row"] { position: sticky; left: 0; background: var(--card); width: 150px; min-width: 120px; text-transform: none; letter-spacing: 0; }
+.vs-table thead th { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--ink); vertical-align: top; }
+.vs-table thead img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
+.vs-table td .md ul { margin: 0; padding-left: 18px; }
+.vs-table td .md p { margin: 0 0 4px; }
+.vs-unit { padding: 4px 0; border-bottom: 1px dashed var(--line); }
+.vs-unit:last-child { border-bottom: 0; }
+.vs-best { color: var(--ok); }
+.link-x { display: block; margin-top: 4px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 400; color: var(--muted); text-decoration: underline; cursor: pointer; }
 .pin { width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--brand); border: 3px solid #fff;
        box-shadow: 0 1px 5px rgba(0,0,0,.4); }
 .pin.hl { background: var(--accent); }

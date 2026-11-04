@@ -86,6 +86,44 @@ function unitSummary(units) {
   return { from_price: prices.length ? Math.min(...prices) : null, land_range: range("land_sf"), bu_range: range("bu_sf") };
 }
 
+// The one info_md line the power and floor loading filters read, e.g. "- **电 / 承重:** 电 200 – 400A；承重 3 吨/m²".
+// "60 + 60A" counts as 120A; kN/m² and kPa are converted to tons so every project filters on the same scale.
+function parseSpecs(info) {
+  const line = String(info || "").match(/\*\*电 \/ 承重:\*\*\s*(.+)/)?.[1] || "";
+  const part = word => line.match(new RegExp(`${word} ([^；]*)`))?.[1]?.trim() || "";
+  const nums = t => (t.match(/\d[\d,]*(?:\.\d+)?(?:\s*\+\s*\d+)?/g) || []).map(n => n.split("+").reduce((a, b) => a + +b.replace(/,/g, ""), 0));
+  const power = part("电"), load = part("承重");
+  const k = /kn|kpa/i.test(load) ? 1 / 9.81 : 1;
+  return { power, load, amps: nums(power), tons: nums(load).map(n => Math.round(n * k * 10) / 10) };
+}
+// "10 kN/m²" also shows its rough tons, because customers usually ask in tons.
+function loadLabel(s) {
+  if (!s.load) return "";
+  const text = T(s.load, s.load.replace(/吨/g, s.tons.every(t => t === 1) ? "ton" : "tons"));
+  if (!/kn|kpa/i.test(s.load)) return text;
+  const lo = Math.min(...s.tons), hi = Math.max(...s.tons), t = lo === hi ? `${lo}` : `${lo} – ${hi}`;
+  return `${text}${T(`（约 ${t} 吨）`, ` (approx. ${t} tons)`)}`;
+}
+
+// Projects picked for the Compare tab; kept per browser so agents can pick while browsing.
+const MAX_COMPARE = 4;
+function compareList() {
+  try { return JSON.parse(localStorage.getItem("omr_compare") || "[]").slice(0, MAX_COMPARE); } catch { return []; }
+}
+function saveCompare(list) {
+  try { localStorage.setItem("omr_compare", JSON.stringify(list.slice(0, MAX_COMPARE))); } catch {}
+  renderNav();
+}
+// Adds or removes a project; false when the list is already full.
+function toggleCompare(slug) {
+  const list = compareList();
+  if (list.includes(slug)) { saveCompare(list.filter(s => s !== slug)); return true; }
+  if (list.length >= MAX_COMPARE) return false;
+  saveCompare([...list, slug]);
+  return true;
+}
+const compareLabel = on => on ? T("✓ 已加入对比", "✓ In compare") : T("+ 对比", "+ Compare");
+
 // 011-391 93190 style, as agents write it in WhatsApp.
 function fmtPhone(ph) {
   const d = String(ph || "").replace(/\D/g, "").replace(/^60/, "0");
@@ -186,7 +224,8 @@ function renderNav() {
   const link = (href, label) => `<a href="${href}" class="${r.startsWith(href) ? "active" : ""}">${label}</a>`;
   let html = "";
   if (me && me.profile.status === "approved") {
-    html += link("#/projects", "Projects") + (SHOW_COMPARE ? link("#/compare", "价格对比") : "");
+    const picked = compareList().length;
+    html += link("#/projects", "Projects") + link("#/vs", `${T("项目对比", "Compare")}${picked ? ` (${picked})` : ""}`) + (SHOW_COMPARE ? link("#/compare", "价格对比") : "");
     if (isAdmin()) html += link("#/admin/upload", "上传资料") + link("#/admin/users", "Agents") + (SHOW_COMPARE ? link("#/admin/comparables", "成交记录") : "");
     html += `<a href="#/logout">${T("登出", "Log out")}</a>`;
   } else if (me) {
@@ -207,6 +246,7 @@ const routes = [
   [/^#\/pending$/, viewPending, "user"],
   [/^#\/projects$/, viewProjects, "approved"],
   [/^#\/p\/([^/?]+)$/, viewProject, "approved"],
+  [/^#\/vs$/, viewVersus, "approved"],
   ...(SHOW_COMPARE ? [[/^#\/compare(?:\/([^/?]+))?$/, viewCompare, "approved"]] : []),
   [/^#\/admin\/upload$/, viewUpload, "admin"],
   [/^#\/admin\/review\/(\d+)$/, viewReview, "admin"],
@@ -336,19 +376,21 @@ function fitListing() {
 }
 window.addEventListener("resize", fitListing);
 
+const LOAD_STEPS = [1, 1.5, 2, 3, 5];
+
 const pinIcon = (hl, approx) => L.divIcon({ className: "", html: `<div class="pin${hl ? " hl" : ""}${approx ? " approx" : ""}"></div>`,
   iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] });
 
 async function viewProjects() {
   const [res, ph] = await Promise.all([
-    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
+    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, info_md, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
     sb.from("files").select("project_id, storage_path").eq("doc_type", PHOTO).not("storage_path", "is", null).order("sort_order").order("id"),
   ]);
   check(res, "读取 projects ");
   const photos = {};
   (ph.data || []).forEach(f => (photos[f.project_id] ||= []).push(f.storage_path));
   const urls = await signUrls(Object.values(photos).map(a => a[0]));
-  const projects = res.data.map(p => ({ ...p, ...unitSummary(p.unit_types),
+  const projects = res.data.map(p => ({ ...p, ...unitSummary(p.unit_types), specs: parseSpecs(p.info_md),
     cover: photos[p.id] ? urls[photos[p.id][0]] : null, nphotos: (photos[p.id] || []).length }));
   // Projects agents can still sell come first; on hold, then sold out, go to the bottom.
   const LAST = { on_hold: 1, sold_out: 2 };
@@ -364,6 +406,9 @@ async function viewProjects() {
       <select id="area"><option value="">${T("全部地区", "All areas")}</option>${opts(areas, saved.area)}</select>
       ${cats.length ? `<select id="cat"><option value="">${T("全部类型", "All types")}</option>${opts(cats, saved.cat)}</select>` : ""}
       <select id="status"><option value="">${T("全部状态", "All statuses")}</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <select id="amp" aria-label="${T("电力", "Power supply")}"><option value="">${T("电力不限", "Any power")}</option>${[100, 150, 200, 300, 400, 600, 800, 1000].map(a => `<option value="${a}" ${String(a) === saved.amp ? "selected" : ""}>≥ ${num(a)}A</option>`).join("")}</select>
+      <select id="tmin" aria-label="${T("承重从", "Floor loading from")}"><option value="">${T("承重不限", "Any loading")}</option>${LOAD_STEPS.map(t => `<option value="${t}" ${String(t) === saved.tmin ? "selected" : ""}>${T(`≥ ${t} 吨/m²`, `≥ ${t} ton/m²`)}</option>`).join("")}</select>
+      <select id="tmax" aria-label="${T("承重到", "Floor loading to")}"><option value="">${T("承重上限不限", "No upper limit")}</option>${LOAD_STEPS.map(t => `<option value="${t}" ${String(t) === saved.tmax ? "selected" : ""}>${T(`≤ ${t} 吨/m²`, `≤ ${t} ton/m²`)}</option>`).join("")}</select>
       ${isAdmin() ? `<a class="btn ghost" href="#/admin/new">+ 新增 project</a>` : ""}
     </div>
     <div class="listing">
@@ -399,9 +444,15 @@ async function viewProjects() {
   const draw = () => {
     const q = $("#q").value.trim().toLowerCase(), area = $("#area").value, cat = $("#cat")?.value || "", status = $("#status").value;
     const inview = $("#inview").checked;
-    try { sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, cat, status, inview })); } catch {}
-    const matches = projects.filter(p => (!q || [p.name, p.area, p.category, p.developer].join(" ").toLowerCase().includes(q))
+    const amp = $("#amp").value, tmin = $("#tmin").value, tmax = $("#tmax").value;
+    try { sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, cat, status, inview, amp, tmin, tmax })); } catch {}
+    // A project passes when any of its types reaches the power, or its loading range touches the range asked for.
+    const specOk = p => (!amp || Math.max(0, ...p.specs.amps) >= +amp)
+      && (!(tmin || tmax) || (p.specs.tons.length > 0 && Math.max(...p.specs.tons) >= +(tmin || 0) && Math.min(...p.specs.tons) <= +(tmax || Infinity)));
+    const basic = projects.filter(p => (!q || [p.name, p.area, p.category, p.developer].join(" ").toLowerCase().includes(q))
       && (!area || p.area === area) && (!cat || p.category === cat) && (!status || p.status === status));
+    const matches = basic.filter(specOk);
+    const noData = basic.filter(p => (amp && !p.specs.amps.length) || ((tmin || tmax) && !p.specs.tons.length)).length;
     if (cluster) {
       cluster.clearLayers();
       matches.forEach(p => markers[p.id] && cluster.addLayer(markers[p.id]));
@@ -409,7 +460,7 @@ async function viewProjects() {
     // On phones the map is hidden behind a toggle; only filter by it while it is on screen.
     const bounds = listMap && inview && $("#map").offsetWidth ? listMap.getBounds() : null;
     const rows = bounds ? matches.filter(p => hasGeo(p) && bounds.contains([p.lat, p.lng])) : matches;
-    $("#count").textContent = T(`找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`, `${rows.length} projects found${bounds ? " (in map area)" : ""}`);
+    $("#count").textContent = T(`找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`, `${rows.length} projects found${bounds ? " (in map area)" : ""}`) + (noData ? T(`；另有 ${noData} 个没有这项资料，没有列出`, `; ${noData} more have no data for this and are not listed`) : "");
     $("#list").innerHTML = rows.map(p => `<a class="lcard" data-id="${p.id}" href="#/p/${encodeURIComponent(p.slug)}">
         <div class="ph">${p.cover ? `<img src="${e(p.cover)}" alt="" loading="lazy">` : `<div class="noimg">${e(p.name)}</div>`}
           <span class="tag ${e(p.status)}">${e(STATUS_LABEL[p.status] || p.status)}</span>
@@ -419,7 +470,16 @@ async function viewProjects() {
           <div class="loc">📍 ${e(p.area || "—")}</div>
           <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div>${tenureChip(p.tenure)}</div>
           ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>${T("建筑", "Built-up")} <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>${T("土地", "Land")} <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
+          ${p.specs.power || p.specs.load ? `<div class="specline">${p.specs.power ? `<span>⚡ <b>${e(p.specs.power)}</b></span>` : ""}${p.specs.load ? `<span>🏋 <b>${e(loadLabel(p.specs))}</b></span>` : ""}</div>` : ""}
+          <button type="button" class="cmp-btn ${compareList().includes(p.slug) ? "on" : ""}" data-cmp="${e(p.slug)}">${compareLabel(compareList().includes(p.slug))}</button>
         </div></a>`).join("") || `<p class="muted">${T("找不到符合的 project。", "No matching projects. ")}${bounds ? T("试试把地图拉远，或取消「只显示地图范围内」。", "Try zooming the map out, or untick “Only show projects in map area”.") : ""}</p>`;
+    document.querySelectorAll("[data-cmp]").forEach(b => b.onclick = ev => {
+      ev.preventDefault();
+      if (!toggleCompare(b.dataset.cmp)) { alertFull(); return; }
+      const on = compareList().includes(b.dataset.cmp);
+      b.classList.toggle("on", on);
+      b.textContent = compareLabel(on);
+    });
     document.querySelectorAll(".lcard").forEach(c => {
       const p = byId[c.dataset.id], m = markers[p.id];
       if (!m) return;
@@ -427,7 +487,7 @@ async function viewProjects() {
       c.onmouseleave = () => { m.setIcon(pinIcon(false, p.geo_approx)); m.setZIndexOffset(0); };
     });
   };
-  ["q", "area", "cat", "status", "inview"].forEach(id => $("#" + id)?.addEventListener("input", draw));
+  ["q", "area", "cat", "status", "inview", "amp", "tmin", "tmax"].forEach(id => $("#" + id)?.addEventListener("input", draw));
   if (listMap) listMap.on("moveend", () => { if ($("#inview")?.checked) draw(); });
   let mapShown = innerWidth > 900;
   $("#toggle").onclick = () => {
@@ -437,6 +497,74 @@ async function viewProjects() {
     draw();
   };
   draw();
+}
+
+const alertFull = () => flash(T(`最多对比 ${MAX_COMPARE} 个 project，请先到「项目对比」移除一个。`, `You can compare up to ${MAX_COMPARE} projects. Remove one under Compare first.`));
+
+// Side-by-side sheet for sales meetings: pick project A, B, C… and read every key fact on one row.
+async function viewVersus() {
+  document.body.classList.add("wide");
+  const allRes = await sb.from("projects").select("slug, name").order("name");
+  check(allRes, "读取 projects ");
+  const all = allRes.data;
+  const known = new Set(all.map(p => p.slug));
+  const picked = compareList().filter(s => known.has(s));
+  const rowsRes = picked.length ? await sb.from("projects").select("*, unit_types(*)").in("slug", picked) : { data: [] };
+  check(rowsRes, "读取 project ");
+  const list = picked.map(s => rowsRes.data.find(p => p.slug === s)).filter(Boolean);
+  const ph = list.length ? (await sb.from("files").select("project_id, storage_path").eq("doc_type", PHOTO).not("storage_path", "is", null)
+    .in("project_id", list.map(p => p.id)).order("sort_order").order("id")).data || [] : [];
+  const cover = {};
+  ph.forEach(f => cover[f.project_id] ||= f.storage_path);
+  const urls = await signUrls(Object.values(cover));
+  const facts = list.map(p => {
+    const units = p.unit_types.sort((a, b) => a.id - b.id);
+    const psfs = units.map(u => psf(u.nett_price || u.spa_price, u.bu_sf)).filter(Boolean);
+    return { ...unitSummary(units), units, specs: parseSpecs(p.info_md), psf: psfs.length ? Math.min(...psfs) : null };
+  });
+  const lowest = key => { const v = facts.map(f => f[key]).filter(Boolean); return v.length > 1 ? Math.min(...v) : null; };
+  const lowPrice = lowest("from_price"), lowPsf = lowest("psf");
+  const slots = Array.from({ length: Math.min(MAX_COMPARE, picked.length + 1) }, (_, i) => picked[i] || "");
+  const letter = i => "ABCD"[i];
+  const row = (label, cell) => `<tr><th scope="row">${label}</th>${list.map((p, i) => `<td>${cell(p, facts[i]) || "–"}</td>`).join("")}</tr>`;
+  render(`<div class="vs">
+    <h1>${T("项目对比", "Compare projects")}</h1>
+    <p class="muted small">${T(`选 2 – ${MAX_COMPARE} 个 project，也可以在 Projects 页按「+ 对比」。价钱是每个户型最便宜的可售单位，优先用净价。`, `Pick 2 – ${MAX_COMPARE} projects, or tap “+ Compare” on the Projects page. Prices are the cheapest available unit per type, nett where known.`)}</p>
+    <div class="vs-pick">
+      ${slots.map((s, i) => `<label>${T("Project", "Project")} ${letter(i)}<select data-slot="${i}"><option value="">${T("选择 project…", "Choose a project…")}</option>
+        ${all.map(p => `<option value="${e(p.slug)}" ${p.slug === s ? "selected" : ""} ${p.slug !== s && picked.includes(p.slug) ? "disabled" : ""}>${e(p.name)}</option>`).join("")}</select></label>`).join("")}
+      ${picked.length ? `<button class="btn ghost" id="vs-clear">${T("全部清除", "Clear all")}</button>` : ""}
+    </div>
+    ${list.length ? `<div class="table-scroll"><table class="vs-table">
+      <thead><tr><th></th>${list.map(p => `<th>
+        ${cover[p.id] && urls[cover[p.id]] ? `<img src="${e(urls[cover[p.id]])}" alt="" loading="lazy">` : ""}
+        <a href="#/p/${encodeURIComponent(p.slug)}">${e(p.name)}</a>
+        <button type="button" class="link-x" data-rm="${e(p.slug)}">${T("移除", "Remove")}</button></th>`).join("")}</tr></thead>
+      <tbody>
+        ${row(T("地区", "Area"), p => e(p.area))}
+        ${row(T("发展商", "Developer"), p => e(p.developer))}
+        ${row(T("地契", "Tenure"), p => e(p.tenure))}
+        ${row(T("类型", "Type"), p => e(p.category))}
+        ${row(T("状态", "Status"), p => e(STATUS_LABEL[p.status] || p.status))}
+        ${row(T("最低价", "Lowest price"), (p, f) => f.from_price ? `<b class="${f.from_price === lowPrice ? "vs-best" : ""}">${rm(f.from_price)}</b>` : "")}
+        ${row(T("最低 RM psf（建筑）", "Lowest RM psf (built-up)"), (p, f) => f.psf ? `<b class="${f.psf === lowPsf ? "vs-best" : ""}">${num(f.psf)}</b>` : "")}
+        ${row(T("建筑面积（sf）", "Built-up (sf)"), (p, f) => f.bu_range)}
+        ${row(T("土地面积（sf）", "Land (sf)"), (p, f) => f.land_range)}
+        ${row(T("电力", "Power supply"), (p, f) => e(f.specs.power))}
+        ${row(T("楼面承重", "Floor loading"), (p, f) => e(loadLabel(f.specs)))}
+        ${row(T("户型与价钱", "Types & prices"), (p, f) => f.units.map(u => `<div class="vs-unit"><b>${e(u.name)}</b>${u.bu_sf ? ` · ${num(u.bu_sf)} sf` : ""}<br>${rm(u.nett_price || u.spa_price)}${u.available ? ` · ${e(u.available)}` : ""}</div>`).join(""))}
+        ${row("Package", p => `<div class="md">${md(T(p.package_md, p.package_md_en || p.package_md))}</div>`)}
+        ${row(T("地图", "Map"), p => mapsLink(p) ? `<a href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : "")}
+      </tbody></table></div>` : `<div class="card muted">${T("还没选 project。在上面选择，就会并排显示。", "No projects yet. Choose above to see them side by side.")}</div>`}
+  </div>`);
+  document.querySelectorAll("[data-slot]").forEach(sel => sel.onchange = () => {
+    const next = [...picked];
+    next[+sel.dataset.slot] = sel.value;
+    saveCompare(next.filter(Boolean));
+    viewVersus();
+  });
+  document.querySelectorAll("[data-rm]").forEach(b => b.onclick = () => { saveCompare(picked.filter(s => s !== b.dataset.rm)); viewVersus(); });
+  if ($("#vs-clear")) $("#vs-clear").onclick = () => { saveCompare([]); viewVersus(); };
 }
 
 async function nearbyComparables(area) {
@@ -563,6 +691,7 @@ async function viewProject(slug) {
     <h2>${T("快速操作", "Quick actions")}</h2>
     ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>
       <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("WhatsApp 发给客户", "WhatsApp to customer")}</a>` : ""}
+    <button class="btn ghost" id="cmp-one">${compareLabel(compareList().includes(p.slug))}</button>
     ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">${T("Drive 文件夹", "Drive folder")}</a>` : ""}
@@ -599,6 +728,10 @@ async function viewProject(slug) {
     $("#c_rebate").value = u.spa_price && u.nett_price && +u.nett_price < +u.spa_price ? ((1 - u.nett_price / u.spa_price) * 100).toFixed(1) : 0;
     calc(); $("#c_spa").scrollIntoView({ behavior: "smooth", block: "center" });
   });
+  $("#cmp-one").onclick = ev => {
+    if (!toggleCompare(p.slug)) { alertFull(); return; }
+    ev.target.textContent = compareLabel(compareList().includes(p.slug));
+  };
   document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(blast).then(() => {
     const was = btn.textContent;
     btn.textContent = T("已复制 ✓", "Copied ✓"); setTimeout(() => btn.textContent = was, 1500);
