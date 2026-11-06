@@ -105,6 +105,9 @@ function loadLabel(s) {
   return `${text}${T(`（约 ${t} 吨）`, ` (approx. ${t} tons)`)}`;
 }
 
+// The width x length line in info_md, e.g. "- **尺寸:** Type A 32' x 87'；Type B 35' x 87'".
+const sizeLine = p => T(p.info_md, p.info_md_en || p.info_md)?.match(/\*\*(?:尺寸|Size \(W x L\)):\*\*\s*(.+)/)?.[1] || "";
+
 // Projects picked for the Compare tab; kept per browser so agents can pick while browsing.
 const MAX_COMPARE = 4;
 function compareList() {
@@ -383,7 +386,7 @@ const pinIcon = (hl, approx) => L.divIcon({ className: "", html: `<div class="pi
 
 async function viewProjects() {
   const [res, ph] = await Promise.all([
-    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, info_md, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
+    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, info_md, info_md_en, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
     sb.from("files").select("project_id, storage_path").eq("doc_type", PHOTO).not("storage_path", "is", null).order("sort_order").order("id"),
   ]);
   check(res, "读取 projects ");
@@ -471,6 +474,7 @@ async function viewProjects() {
           <div class="loc">📍 ${e(p.area || "—")}</div>
           <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div></div>
           ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>${T("建筑", "Built-up")} <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>${T("土地", "Land")} <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
+          ${sizeLine(p) ? `<div class="dims">📐 <b>${e(sizeLine(p))}</b></div>` : ""}
           ${p.specs.power || p.specs.load ? `<div class="specline">${p.specs.power ? `<span>⚡ <b>${e(p.specs.power)}</b></span>` : ""}${p.specs.load ? `<span>🏋 <b>${e(loadLabel(p.specs))}</b></span>` : ""}</div>` : ""}
           <button type="button" class="cmp-btn ${compareList().includes(p.slug) ? "on" : ""}" data-cmp="${e(p.slug)}">${compareLabel(compareList().includes(p.slug))}</button>
         </div></a>`).join("") || `<p class="muted">${T("找不到符合的 project。", "No matching projects. ")}${bounds ? T("试试把地图拉远，或取消「只显示地图范围内」。", "Try zooming the map out, or untick “Only show projects in map area”.") : ""}</p>`;
@@ -551,6 +555,7 @@ async function viewVersus() {
         ${row(T("最低 RM psf（建筑）", "Lowest RM psf (built-up)"), (p, f) => f.psf ? `<b class="${f.psf === lowPsf ? "vs-best" : ""}">${num(f.psf)}</b>` : "")}
         ${row(T("建筑面积（sf）", "Built-up (sf)"), (p, f) => f.bu_range)}
         ${row(T("土地面积（sf）", "Land (sf)"), (p, f) => f.land_range)}
+        ${row(T("尺寸（阔 x 长）", "Size (W x L)"), p => e(sizeLine(p)))}
         ${row(T("电力", "Power supply"), (p, f) => e(f.specs.power))}
         ${row(T("楼面承重", "Floor loading"), (p, f) => e(loadLabel(f.specs)))}
         ${row(T("户型与价钱", "Types & prices"), (p, f) => f.units.map(u => `<div class="vs-unit"><b>${e(u.name)}</b>${u.bu_sf ? ` · ${num(u.bu_sf)} sf` : ""}<br>${rm(u.nett_price || u.spa_price)}${u.available ? ` · ${e(u.available)}` : ""}</div>`).join(""))}
