@@ -464,11 +464,12 @@ async function viewProjects() {
     $("#list").innerHTML = rows.map(p => `<a class="lcard" data-id="${p.id}" href="#/p/${encodeURIComponent(p.slug)}">
         <div class="ph">${p.cover ? `<img src="${e(p.cover)}" alt="" loading="lazy">` : `<div class="noimg">${e(p.name)}</div>`}
           <span class="tag ${e(p.status)}">${e(STATUS_LABEL[p.status] || p.status)}</span>
+          ${tenureChip(p.tenure)}
           ${p.nphotos > 1 ? `<span class="cnt">📷 ${p.nphotos}</span>` : ""}</div>
         <div class="bd"><div class="kicker">${e(p.category || "Project")}</div>
           <h3>${e(p.name)}</h3>
           <div class="loc">📍 ${e(p.area || "—")}</div>
-          <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div>${tenureChip(p.tenure)}</div>
+          <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div></div>
           ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>${T("建筑", "Built-up")} <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>${T("土地", "Land")} <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
           ${p.specs.power || p.specs.load ? `<div class="specline">${p.specs.power ? `<span>⚡ <b>${e(p.specs.power)}</b></span>` : ""}${p.specs.load ? `<span>🏋 <b>${e(loadLabel(p.specs))}</b></span>` : ""}</div>` : ""}
           <button type="button" class="cmp-btn ${compareList().includes(p.slug) ? "on" : ""}" data-cmp="${e(p.slug)}">${compareLabel(compareList().includes(p.slug))}</button>
