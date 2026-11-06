@@ -108,6 +108,24 @@ function loadLabel(s) {
 // The width x length line in info_md, e.g. "- **尺寸:** Type A 32' x 87'；Type B 35' x 87'".
 const sizeLine = p => T(p.info_md, p.info_md_en || p.info_md)?.match(/\*\*(?:尺寸|Size \(W x L\)):\*\*\s*(.+)/)?.[1] || "";
 
+const SIZE_LINE = /^.*\*\*(?:尺寸|Size \(W x L\)):\*\*.*\n?/m;
+// Splits the 尺寸 line by unit type. "（建筑）" means built-up, otherwise land; one size with no type name fits every row.
+function unitSizes(p, units) {
+  const line = String(p.info_md || "").match(/\*\*尺寸:\*\*\s*(.+)/)?.[1] || "";
+  const segs = line.split("；").filter(Boolean).map(s => {
+    const at = s.search(/\d[\d.,]*['’]/);
+    return { label: s.slice(0, at).trim(), dims: s.slice(at).replace("（建筑）", "").trim(), bu: s.includes("（建筑）"), raw: s };
+  });
+  const used = new Set();
+  const found = {};
+  units.forEach(u => {
+    const seg = segs.length === 1 && !segs[0].label ? segs[0]
+      : segs.find(g => g.label === u.name) || segs.find(g => g.label && baseType(g.label) === baseType(u.name));
+    if (seg) { found[u.name] = seg; used.add(seg); }
+  });
+  return { of: u => found[u.name], rest: segs.filter(g => !used.has(g)).map(g => g.raw.replace("其他 ", "").replace("（建筑）", T("（建筑）", " (built-up)")).replace("角头", T("角头", "corner"))) };
+}
+
 // Projects picked for the Compare tab; kept per browser so agents can pick while browsing.
 const MAX_COMPARE = 4;
 function compareList() {
@@ -474,7 +492,6 @@ async function viewProjects() {
           <div class="loc">📍 ${e(p.area || "—")}</div>
           <div class="price-row"><div class="price">${p.from_price ? T(`<small>由</small> ${rm(p.from_price)} <small>起</small>`, `<small>From</small> ${rm(p.from_price)}`) : `<small>${T("价格待更新", "Price to be updated")}</small>`}</div></div>
           ${p.land_range || p.bu_range ? `<div class="sizes">${p.bu_range ? `<span>${T("建筑", "Built-up")} <b>${p.bu_range}</b> sf</span>` : ""}${p.land_range ? `<span>${T("土地", "Land")} <b>${p.land_range}</b> sf</span>` : ""}</div>` : ""}
-          ${sizeLine(p) ? `<div class="dims">📐 <b>${e(sizeLine(p))}</b></div>` : ""}
           ${p.specs.power || p.specs.load ? `<div class="specline">${p.specs.power ? `<span>⚡ <b>${e(p.specs.power)}</b></span>` : ""}${p.specs.load ? `<span>🏋 <b>${e(loadLabel(p.specs))}</b></span>` : ""}</div>` : ""}
           <button type="button" class="cmp-btn ${compareList().includes(p.slug) ? "on" : ""}" data-cmp="${e(p.slug)}">${compareLabel(compareList().includes(p.slug))}</button>
         </div></a>`).join("") || `<p class="muted">${T("找不到符合的 project。", "No matching projects. ")}${bounds ? T("试试把地图拉远，或取消「只显示地图范围内」。", "Try zooming the map out, or untick “Only show projects in map area”.") : ""}</p>`;
@@ -601,9 +618,11 @@ async function viewProject(slug) {
   const sum = unitSummary(units);
   const net = u => u.nett_price || u.spa_price;
   // Only show price-table columns that have data for this project.
+  const sizes = unitSizes(p, units);
+  const withDims = (value, u, bu) => { const g = sizes.of(u); return value + (g && g.bu === bu ? `<div class="cell-dim">${e(g.dims)}</div>` : ""); };
   const cols = [
-    ["Land sf", u => num(u.land_sf), units.some(u => u.land_sf)],
-    ["BU sf", u => num(u.bu_sf), units.some(u => u.bu_sf)],
+    ["Land sf", u => withDims(num(u.land_sf), u, false), units.some(u => u.land_sf || (sizes.of(u) && !sizes.of(u).bu))],
+    ["BU sf", u => withDims(num(u.bu_sf), u, true), units.some(u => u.bu_sf || sizes.of(u)?.bu)],
     ["SPA", u => rm(u.spa_price), units.some(u => u.spa_price)],
     ["Nett", u => rm(u.nett_price), units.some(u => u.nett_price)],
     ["RM psf (BU)", u => num(psf(net(u), u.bu_sf)), units.some(u => net(u) && u.bu_sf)],
@@ -645,7 +664,7 @@ async function viewProject(slug) {
       : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 ${T("打开 Google Maps", "Open Google Maps")}</a></p>` : `<p class="muted">${T("还没有位置资料。", "No location yet.")}</p>`}
     </div>
 
-    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(T(p.info_md, p.info_md_en || p.info_md)) || none}</div>
+    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(units.length ? T(p.info_md, p.info_md_en || p.info_md)?.replace(SIZE_LINE, "") : T(p.info_md, p.info_md_en || p.info_md)) || none}</div>
     <div class="section md"><h2>🎁 Package</h2>${md(T(p.package_md, p.package_md_en || p.package_md)) || none}</div>
 
     <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
@@ -657,7 +676,7 @@ async function viewProject(slug) {
         ${hasAvail ? `<td class="nowrap">${e(u.available)}</td>` : ""}
         ${hasPlans ? `<td>${plansOf(u.name).length ? `<button class="btn ghost sm" data-plan="${e(u.name)}">📐 ${T("看", "View")}</button>` : ""}</td>` : ""}
         <td><button class="btn ghost sm" data-unit="${u.id}" title="${T("计算", "Calculate")}">🧮</button></td></tr>`).join("")}
-    </table></div>` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}
+    </table></div>${sizes.rest.length ? `<p class="small muted">${T("其他尺寸", "Other sizes")}：${e(sizes.rest.join(" · "))}</p>` : ""}` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}
     </div>
     ${planGroups.length ? `<div class="section"><h2>📐 Layout</h2><div class="plans">
       ${planGroups.map(g => `<figure data-plan="${e(g.type)}"><img src="${e(g.urls[0])}" alt="" loading="lazy">
