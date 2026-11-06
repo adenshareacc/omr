@@ -699,8 +699,7 @@ async function viewProject(slug) {
 
     <div class="section"><h2>📢 Blasting Template</h2>
       ${blast ? `<div class="blast">${e(blast)}</div>
-        <p><button class="btn ok sm" data-copy>${T("复制", "Copy")}</button>
-        <a class="btn ghost sm" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("用 WhatsApp 发送", "Send via WhatsApp")}</a></p>`
+        <p><button class="btn ok sm" data-copy>${T("复制", "Copy")}</button></p>`
         : `<p class="muted">${T("暂无 blasting template。", "No blasting template yet.")}</p>`}
     </div>
 
@@ -714,8 +713,7 @@ async function viewProject(slug) {
 
   <aside class="side"><div class="card">
     <h2>${T("快速操作", "Quick actions")}</h2>
-    ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>
-      <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("WhatsApp 发给客户", "WhatsApp to customer")}</a>` : ""}
+    ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>` : ""}
     ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">${T("Drive 文件夹", "Drive folder")}</a>` : ""}
