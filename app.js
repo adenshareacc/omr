@@ -716,7 +716,6 @@ async function viewProject(slug) {
     <h2>${T("快速操作", "Quick actions")}</h2>
     ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>
       <a class="btn ghost" href="https://wa.me/?text=${encodeURIComponent(blast)}" target="_blank" rel="noopener">${T("WhatsApp 发给客户", "WhatsApp to customer")}</a>` : ""}
-    <button class="btn ghost" id="cmp-one">${compareLabel(compareList().includes(p.slug))}</button>
     ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">${T("Drive 文件夹", "Drive folder")}</a>` : ""}
@@ -753,10 +752,6 @@ async function viewProject(slug) {
     $("#c_rebate").value = u.spa_price && u.nett_price && +u.nett_price < +u.spa_price ? ((1 - u.nett_price / u.spa_price) * 100).toFixed(1) : 0;
     calc(); $("#c_spa").scrollIntoView({ behavior: "smooth", block: "center" });
   });
-  $("#cmp-one").onclick = ev => {
-    if (!toggleCompare(p.slug)) { alertFull(); return; }
-    ev.target.textContent = compareLabel(compareList().includes(p.slug));
-  };
   document.querySelectorAll("[data-copy]").forEach(btn => btn.onclick = () => navigator.clipboard.writeText(blast).then(() => {
     const was = btn.textContent;
     btn.textContent = T("已复制 ✓", "Copied ✓"); setTimeout(() => btn.textContent = was, 1500);
