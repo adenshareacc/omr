@@ -120,7 +120,7 @@ function unitSizes(p, units) {
   const found = {};
   units.forEach(u => {
     const seg = segs.length === 1 && !segs[0].label ? segs[0]
-      : segs.find(g => g.label === u.name) || segs.find(g => g.label && baseType(g.label) === baseType(u.name));
+      : segs.find(g => g.label === u.name) || segs.find(g => g.label && baseType(g.label) === baseType(u.name) && !units.some(v => v.name === g.label));
     if (seg) { found[u.name] = seg; used.add(seg); }
   });
   return { of: u => found[u.name], rest: segs.filter(g => !used.has(g)).map(g => g.raw.replace("其他 ", "").replace("（建筑）", T("（建筑）", " (built-up)")).replace("角头", T("角头", "corner"))) };
