@@ -672,8 +672,8 @@ async function viewProject(slug) {
       <tr><th>Type</th>${cols.map(c => `<th class="num">${c[0]}</th>`).join("")}${hasAvail ? `<th>${T("可售", "Available")}</th>` : ""}${hasPlans ? `<th>Layout</th>` : ""}<th></th></tr>
       ${units.map(u => `<tr>
         <td class="nm"><b>${e(u.name)}</b>${u.notes ? `<div class="small muted">${e(u.notes)}</div>` : ""}</td>
-        ${cols.map(c => `<td class="num">${c[1](u)}</td>`).join("")}
-        ${hasAvail ? `<td class="nowrap">${e(u.available)}</td>` : ""}
+        ${cols.map(c => `<td class="num" data-l="${c[0]}">${c[1](u)}</td>`).join("")}
+        ${hasAvail ? `<td class="nowrap" data-l="${T("可售", "Available")}">${e(u.available)}</td>` : ""}
         ${hasPlans ? `<td>${plansOf(u.name).length ? `<button class="btn ghost sm" data-plan="${e(u.name)}">📐 ${T("看", "View")}</button>` : ""}</td>` : ""}
         <td><button class="btn ghost sm" data-unit="${u.id}" title="${T("计算", "Calculate")}">🧮</button></td></tr>`).join("")}
     </table></div>${sizes.rest.length ? `<p class="small muted">${T("其他尺寸", "Other sizes")}：${e(sizes.rest.join(" · "))}</p>` : ""}` : `<p class="muted">${T("还没有价格资料。", "No prices yet.")}</p>`}

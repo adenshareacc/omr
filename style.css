@@ -180,8 +180,8 @@ body.wide main.wrap { max-width: none; padding: 0; }
 .side { position: sticky; top: 16px; }
 .side .btn { display: block; text-align: center; margin-top: 8px; }
 .side .dl a { display: block; padding: 7px 0; border-bottom: 1px solid var(--line); text-decoration: none; font-size: 14px; }
-@media (max-width: 900px) { .pgrid { grid-template-columns: 1fr; } .side { position: static; }
-  .gallery { height: 260px; grid-template-columns: 1fr; } .gallery > :not(:first-child) { display: none; } .gallery > :first-child { grid-row: auto; } .gallery .all { display: inline-block; } }
+@media (max-width: 900px) { .pgrid { grid-template-columns: minmax(0, 1fr); } .side { position: static; }
+  .gallery { height: 260px; grid-template-columns: 1fr; grid-template-rows: 1fr; } .gallery > :not(:first-child) { display: none; } .gallery > :first-child { grid-row: auto; } .gallery .all { display: inline-block; } }
 .lightbox { position: fixed; inset: 0; z-index: 2000; background: rgba(10,14,20,.94); display: flex; align-items: center; justify-content: center; }
 .lightbox img { max-width: 92vw; max-height: 84vh; object-fit: contain; }
 .lightbox button { position: absolute; background: rgba(255,255,255,.15); color: #fff; border: 0; font-size: 26px; width: 48px; height: 48px; border-radius: 50%; cursor: pointer; }
@@ -202,10 +202,20 @@ nav a.lang { border: 1px solid rgba(255,255,255,.5); border-radius: 6px; padding
 
 /* project page: roomier, tidier */
 body.proj main.wrap { max-width: 1320px; }
-.pgrid { grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; }
+@media (min-width: 901px) { .pgrid { grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; } }
 .units th, .units td { padding: 10px 12px; }
 .units td.nm, .units td.nowrap { white-space: nowrap; }
 .units td:last-child { width: 1%; }
+/* phone: each unit type becomes a small card instead of a wide table */
+@media (max-width: 600px) {
+  .units table, .units tbody, .units tr, .units td { display: block; width: auto !important; }
+  .units tr:first-child { display: none; }
+  .units tr { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 8px; }
+  .units td { border: 0; padding: 2px 0; text-align: left; }
+  .units td.nm { flex: 1 0 100%; }
+  .units td[data-l] { flex: 1 0 45%; white-space: normal; }
+  .units td[data-l]::before { content: attr(data-l); display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+}
 .md ul ul { margin: 2px 0 4px; padding-left: 18px; }
 .md li { margin: 3px 0; line-height: 1.5; }
 .section.md ul { padding-left: 20px; }
