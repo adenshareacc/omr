@@ -90,6 +90,8 @@
   .legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .legend b { width: 16px; height: 16px; display: inline-block; border: 1px solid #999; }
 
+  .preview-bar { flex: none; background: #ffe58f; color: #7a5200; text-align: center; font-size: 14px; padding: 6px 16px; }
+
   /* unit detail side panel */
   .mask { position: fixed; inset: 50px 0 0 0; background: transparent; display: none; z-index: 9; }
   .mask.open { display: block; }
@@ -254,9 +256,32 @@ function closePanel() {
   panel.classList.remove("open"); mask.classList.remove("open");
   if (picked) { picked.classList.remove("picked"); picked = null; }
 }
+// Preview mode (?preview in the URL): click a unit to flip Available/Sold on this screen only.
+// Nothing is saved; a refresh brings back the real data.
+const PREVIEW = new URLSearchParams(location.search).has("preview");
+if (PREVIEW) {
+  const bar = document.createElement("div");
+  bar.className = "preview-bar";
+  bar.textContent = "PREVIEW — not real data. Click a unit to switch Available / Sold. Changes are not saved.";
+  document.body.prepend(bar);
+  document.title = "PREVIEW · " + document.title;
+}
+function updateSummary() {
+  const all = document.querySelectorAll(".room");
+  const free = [...all].filter(el => !el.classList.contains("sold")).length;
+  document.getElementById("summary").textContent = `Available ${free} / ${all.length} units`;
+}
+
 document.getElementById("board").addEventListener("click", e => {
   const el = e.target.closest(".room");
-  if (el && !el.classList.contains("sold")) openPanel(el);
+  if (!el) return;
+  if (PREVIEW) {
+    el.classList.toggle("sold");
+    el.title = `${el.dataset.no} · ${el.classList.contains("sold") ? "Sold" : "Available"}`;
+    updateSummary();
+    return;
+  }
+  if (!el.classList.contains("sold")) openPanel(el);
 });
 document.getElementById("p-close").addEventListener("click", closePanel);
 mask.addEventListener("click", closePanel);
