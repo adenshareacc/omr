@@ -72,12 +72,14 @@
   td.more p { margin: 0; line-height: 22px; }
   td.cell { width: 120px; min-width: 120px; padding: 2px; }
   .room {
-    width: 116px; height: 112px; border: 1px solid #e7e7eb; font-size: 12px;
+    width: 116px; height: 134px; border: 1px solid #e7e7eb; font-size: 12px;
     background: #ddf8ff; color: #222; cursor: default; transition: transform .08s;
   }
   .room.sold { background: #f5545a; color: #fff; }
   .room p { margin: 0; line-height: 22px; height: 22px; text-align: right; padding: 0 4px; white-space: nowrap; overflow: hidden; }
   .room p.num { font-size: 20px; text-align: center; }
+  .room:not(.sold) { cursor: pointer; }
+  .room.picked { border: 2px solid #7ed321; }
   .room.hit { outline: 3px solid #3a6cf4; outline-offset: -1px; }
   .room.dim { opacity: .25; }
 
@@ -87,6 +89,27 @@
   }
   .legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .legend b { width: 16px; height: 16px; display: inline-block; border: 1px solid #999; }
+
+  /* unit detail side panel */
+  .mask { position: fixed; inset: 50px 0 0 0; background: transparent; display: none; z-index: 9; }
+  .mask.open { display: block; }
+  .panel {
+    position: fixed; top: 50px; right: 0; bottom: 0; width: 410px; max-width: 100%;
+    background: #fff; box-shadow: -4px 0 16px rgba(0,0,0,.12); z-index: 10;
+    padding: 20px 30px; overflow-y: auto;
+    transform: translateX(100%); transition: transform .2s ease;
+  }
+  .panel.open { transform: none; }
+  .p-close {
+    position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border: 0; background: #fff;
+    font-size: 22px; line-height: 22px; color: #999; cursor: pointer; padding: 0;
+  }
+  .p-close:hover { color: #333; }
+  .p-head { display: flex; gap: 8px; font-size: 13px; line-height: 32px; color: #222; margin: 0 0 6px -12px; padding-right: 10px; }
+  .p-icon { flex: none; width: 26px; height: 26px; margin-top: 3px; border-radius: 50%; background: #4a7cf6; display: flex; align-items: center; justify-content: center; }
+  .p-row { display: flex; font-size: 13px; line-height: 18px; padding: 12px 0; }
+  .p-row span:first-child { width: 108px; flex: none; color: #666; }
+  .p-row span:last-child { color: #222; }
 
   @media (max-width: 640px) {
     .topbar { padding: 0 16px; gap: 10px; }
@@ -129,46 +152,58 @@
   <li><b style="background:#f5545a"></b>Sold</li>
 </ul>
 
+<div class="mask" id="mask"></div>
+<aside class="panel" id="panel" aria-label="Unit detail">
+  <button class="p-close" id="p-close" aria-label="Close">&times;</button>
+  <div class="p-head">
+    <span class="p-icon"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="#fff" d="M12 3 2 12h3v8h5v-6h4v6h5v-8h3z"/></svg></span>
+    <span id="p-title"></span>
+  </div>
+  <div id="p-rows"></div>
+</aside>
+
 <script>
 // Last updated date, shown top right. Change when the data below is refreshed.
-const UPDATED = "2026-11-10";
+const UPDATED = "2026-11-11";
 
-// One string per floor, top to bottom: "floor|unit~layout~sqft~sold,..." (sold: 1 = red, 0 = available; empty = no unit)
+// One string per floor, top to bottom: "floor|unit~layout~sqft~price~sold,..." (sold: 1 = red, 0 = available; empty = no unit)
 const FLOORS = [
-"8|L08-01~D~4252~1,L08-02~B~2433~1,L08-03~B (M)~2433~1,L08-03A~B~2433~1,L08-05~B (M)~2433~0,L08-06~D (M)~4252~1,L08-07~A~2691~1,L08-08~A (M)~2691~1,L08-09~A~2691~1,L08-10~A (M)~2691~1,L08-11~A~2691~0,L08-12~A (M)~2691~0,L08-13~A~2691~0,L08-13A~A (M)~2691~0,L08-15~A~2691~0,L08-16~E~3509~1,L08-17~C~2153~1,L08-18~C (M)~2153~1,L08-19~C~2153~1,L08-20~C (M)~2153~1,L08-21~C~2153~1,L08-22~E (M)~3509~1,L08-23~A (M)~2691~0,L08-23A~A~2691~0,L08-25~A (M)~2691~1,L08-26~A~2691~0,L08-27~A (M)~2691~0,L08-28~A~2691~0,L08-29~A (M)~2691~1,L08-30~A~2691~0,L08-31~A (M)~2691~0",
-"7|L07-01~D~4252~1,L07-02~B~2433~0,L07-03~B (M)~2433~1,L07-03A~B~2433~1,L07-05~B (M)~2433~0,L07-06~D (M)~4252~1,L07-07~A~2691~1,L07-08~A (M)~2691~1,L07-09~A~2691~1,L07-10~A (M)~2691~0,L07-11~A~2691~0,L07-12~A (M)~2691~0,L07-13~A~2691~1,L07-13A~A (M)~2691~1,L07-15~A~2691~0,L07-16~E~3509~1,L07-17~C~2153~1,L07-18~C (M)~2153~1,L07-19~C~2153~1,L07-20~C (M)~2153~1,L07-21~C~2153~1,L07-22~E (M)~3509~1,L07-23~A (M)~2691~0,L07-23A~A~2691~0,L07-25~A (M)~2691~0,L07-26~A~2691~0,L07-27~A (M)~2691~0,L07-28~A~2691~0,L07-29~A (M)~2691~0,L07-30~A~2691~0,L07-31~A (M)~2691~0",
-"6|L06-01~D2~4252~1,L06-02~B2~2476~1,L06-03~B2 (M)~2476~1,L06-03A~B2~2476~1,L06-05~D2 (M)~4252~1,L06-06~A2~2691~0,L06-07~A2 (M)~2691~0,L06-08~A2~2691~0,L06-09~A2 (M)~2691~1,L06-10~A2~2691~0,L06-11~A2 (M)~2691~1,L06-12~A2~2691~1,L06-13~A2~2691~0,L06-13A~E2~3498~1,L06-15~C~2153~1,L06-16~C (M)~2153~1,L06-17~C~2153~1,L06-18~C (M)~2153~1,L06-19~C~2153~1,L06-20~E2 (M)~3498~1,L06-21~A2 (M)~2691~0,L06-22~A2~2691~0,L06-23~A2 (M)~2691~0,L06-23A~A2~2691~0,L06-25~A2 (M)~2691~0,L06-26~A2~2691~1,L06-27~A2~2691~1,L06-28~A2 (M)~2691~1,,,",
-"5|L05-01~D~4252~1,L05-02~B~2433~1,L05-03~B (M)~2433~0,L05-03A~B~2433~1,L05-05~B (M)~2433~1,L05-06~D (M)~4252~1,L05-07~A~2691~0,L05-08~A (M)~2691~0,L05-09~A~2691~0,L05-10~A (M)~2691~0,L05-11~A~2691~0,L05-12~A (M)~2691~0,L05-13~A~2691~0,L05-13A~A (M)~2691~0,L05-15~A~2691~0,L05-16~E~3509~1,L05-17~C~2153~1,L05-18~C (M)~2153~1,L05-19~C~2153~1,L05-20~C (M)~2153~1,L05-21~C~2153~0,L05-22~E (M)~3509~1,L05-23~A (M)~2691~1,L05-23A~A~2691~0,L05-25~A (M)~2691~0,L05-26~A~2691~0,L05-27~A (M)~2691~0,L05-28~A~2691~0,L05-29~A (M)~2691~1,L05-30~A~2691~1,L05-31~A (M)~2691~1",
-"3A|L03A-01~D~4252~1,L03A-02~B~2433~0,L03A-03~B (M)~2433~1,L03A-03A~B~2433~1,L03A-05~B (M)~2433~1,L03A-06~D (M)~4252~1,,,,,,,,,,,,,,,,,,,,,,,,,",
-"3|L03-01~D2~4252~1,L03-02~B2 (M)~2476~1,L03-03~B2~2476~1,L03-03A~B2 (M)~2476~1,L03-05~D2 (M)~4252~1,L03-06~A2~2691~1,L03-07~A2 (M)~2691~1,L03-08~A2 (M)~2691~1,L03-09~A2~2691~0,L03-10~A2 (M)~2691~0,L03-11~A2~2691~1,L03-12~A2 (M)~2691~1,L03-13~A2~2691~1,L03-13A~E2~3498~1,L03-15~C~2153~1,L03-16~C (M)~2153~1,L03-17~C~2153~0,L03-18~C (M)~2153~1,L03-19~C~2153~1,L03-20~E2 (M)~3498~1,L03-21~A2 (M)~2691~0,L03-22~A2 (M)~2691~0,L03-23~A2~2691~0,L03-23A~A2 (M)~2691~1,L03-25~A2~2691~1,L03-26~A2 (M)~2691~1,L03-27~A2~2691~1,L03-28~A2 (M)~2691~0,,,",
-"2|L02-01~D~4252~1,L02-02~B~2433~1,L02-03~B (M)~2433~1,L02-03A~B~2433~1,L02-05~B (M)~2433~1,L02-06~D (M)~4252~1,L02-07~A~2691~1,L02-08~A (M)~2691~1,L02-09~A~2691~1,L02-10~A (M)~2691~1,L02-11~A~2691~0,L02-12~A (M)~2691~0,L02-13~A~2691~0,L02-13A~A (M)~2691~0,L02-15~A~2691~0,L02-16~E~3509~1,L02-17~C~2153~0,L02-18~C (M)~2153~1,L02-19~C~2153~0,L02-20~C (M)~2153~1,L02-21~C~2153~0,L02-22~E (M)~3509~1,L02-23~A (M)~2691~1,L02-23A~A~2691~0,L02-25~A (M)~2691~0,L02-26~A~2691~0,L02-27~A (M)~2691~0,L02-28~A~2691~0,L02-29~A (M)~2691~0,L02-30~A~2691~0,L02-31~A (M)~2691~1",
-"1|L01-01~D~4252~1,L01-02~B~2433~1,L01-03~B (M)~2433~1,L01-03A~B~2433~1,L01-05~B (M)~2433~0,L01-06~D (M)~4252~1,L01-07~A~2691~1,L01-08~A (M)~2691~1,L01-09~A~2691~1,L01-10~A (M)~2691~0,L01-11~A~2691~1,L01-12~A (M)~2691~1,L01-13~A~2691~1,L01-13A~A (M)~2691~0,L01-15~A~2691~0,L01-16~E~3509~1,L01-17~C~2153~1,L01-18~C (M)~2153~1,L01-19~C~2153~1,L01-20~C (M)~2153~1,L01-21~C~2153~1,L01-22~E (M)~3509~1,L01-23~A (M)~2691~0,L01-23A~A~2691~0,L01-25~A (M)~2691~1,L01-26~A~2691~1,L01-27~A (M)~2691~1,L01-28~A~2691~1,L01-29~A (M)~2691~1,L01-30~A~2691~1,L01-31~A (M)~2691~1",
-"G|G-01~D1~5285~1,G-02~B1~2422~1,G-03~B1 (M)~2422~1,G-03A~B1 (M)~2422~1,G-05~D1 (M)~5285~1,G-06~A1~2874~1,G-07~A1 (M)~2874~0,G-08~A1~2874~0,G-09~A1 (M)~2874~0,G-10~A1~2874~0,G-11~A1 (M)~2874~0,G-12~A1~2874~0,G-13~A1 (M)~2874~0,G-13A~A1~2874~0,G-15~E1~3713~1,G-16~E1 (M)~3713~0,G-17~A1 (M)~2874~1,G-18~A1~2874~1,G-19~A1 (M)~2874~1,G-20~A1~2874~0,G-21~A1 (M)~2874~0,G-22~A1~2874~0,G-23~A1 (M)~2874~0,G-23A~A1~2874~0,G-25~A1 (M)~2874~1,,,,,,"
+"8|L08-01~D~4252~3648000~1,L08-02~B~2433~2039000~1,L08-03~B (M)~2433~2039000~1,L08-03A~B~2433~2039000~1,L08-05~B (M)~2433~2039000~0,L08-06~D (M)~4252~3648000~1,L08-07~A~2691~2227000~1,L08-08~A (M)~2691~2227000~1,L08-09~A~2691~2227000~1,L08-10~A (M)~2691~2227000~1,L08-11~A~2691~2227000~0,L08-12~A (M)~2691~2227000~0,L08-13~A~2691~2227000~0,L08-13A~A (M)~2691~2227000~0,L08-15~A~2691~2227000~0,L08-16~E~3509~3016000~1,L08-17~C~2153~1769000~1,L08-18~C (M)~2153~1769000~1,L08-19~C~2153~1769000~1,L08-20~C (M)~2153~1769000~1,L08-21~C~2153~1769000~1,L08-22~E (M)~3509~3016000~1,L08-23~A (M)~2691~2204000~0,L08-23A~A~2691~2204000~0,L08-25~A (M)~2691~2204000~1,L08-26~A~2691~2204000~0,L08-27~A (M)~2691~2204000~0,L08-28~A~2691~2204000~0,L08-29~A (M)~2691~2204000~1,L08-30~A~2691~2204000~0,L08-31~A (M)~2691~2204000~0",
+"7|L07-01~D~4252~3707000~1,L07-02~B~2433~2098000~0,L07-03~B (M)~2433~2098000~1,L07-03A~B~2433~2098000~1,L07-05~B (M)~2433~2098000~0,L07-06~D (M)~4252~3707000~1,L07-07~A~2691~2286000~1,L07-08~A (M)~2691~2286000~1,L07-09~A~2691~2286000~1,L07-10~A (M)~2691~2286000~0,L07-11~A~2691~2286000~0,L07-12~A (M)~2691~2286000~0,L07-13~A~2691~2286000~1,L07-13A~A (M)~2691~2286000~1,L07-15~A~2691~2286000~0,L07-16~E~3509~3074000~1,L07-17~C~2153~1827000~1,L07-18~C (M)~2153~1827000~1,L07-19~C~2153~1827000~1,L07-20~C (M)~2153~1827000~1,L07-21~C~2153~1827000~1,L07-22~E (M)~3509~3074000~1,L07-23~A (M)~2691~2263000~0,L07-23A~A~2691~2263000~0,L07-25~A (M)~2691~2263000~0,L07-26~A~2691~2263000~0,L07-27~A (M)~2691~2263000~0,L07-28~A~2691~2263000~0,L07-29~A (M)~2691~2263000~0,L07-30~A~2691~2263000~0,L07-31~A (M)~2691~2263000~0",
+"6|L06-01~D2~4252~3766000~1,L06-02~B2~2476~2192000~1,L06-03~B2 (M)~2476~2192000~1,L06-03A~B2~2476~2192000~1,L06-05~D2 (M)~4252~3766000~1,L06-06~A2~2691~2345000~0,L06-07~A2 (M)~2691~2345000~0,L06-08~A2~2691~2345000~0,L06-09~A2 (M)~2691~2345000~1,L06-10~A2~2691~2345000~0,L06-11~A2 (M)~2691~2345000~1,L06-12~A2~2691~2345000~1,L06-13~A2~2691~2345000~0,L06-13A~E2~3498~3124000~1,L06-15~C~2153~1886000~1,L06-16~C (M)~2153~1886000~1,L06-17~C~2153~1886000~1,L06-18~C (M)~2153~1886000~1,L06-19~C~2153~1886000~1,L06-20~E2 (M)~3498~3124000~1,L06-21~A2 (M)~2691~2321000~0,L06-22~A2~2691~2321000~0,L06-23~A2 (M)~2691~2321000~0,L06-23A~A2~2691~2321000~0,L06-25~A2 (M)~2691~2321000~0,L06-26~A2~2691~2321000~1,L06-27~A2~2691~2321000~1,L06-28~A2 (M)~2691~2321000~1,,,",
+"5|L05-01~D~4252~3825000~1,L05-02~B~2433~2215000~1,L05-03~B (M)~2433~2215000~0,L05-03A~B~2433~2215000~1,L05-05~B (M)~2433~2215000~1,L05-06~D (M)~4252~3825000~1,L05-07~A~2691~2404000~0,L05-08~A (M)~2691~2404000~0,L05-09~A~2691~2404000~0,L05-10~A (M)~2691~2404000~0,L05-11~A~2691~2404000~0,L05-12~A (M)~2691~2404000~0,L05-13~A~2691~2404000~0,L05-13A~A (M)~2691~2404000~0,L05-15~A~2691~2404000~0,L05-16~E~3509~3192000~1,L05-17~C~2153~1945000~1,L05-18~C (M)~2153~1945000~1,L05-19~C~2153~1945000~1,L05-20~C (M)~2153~1945000~1,L05-21~C~2153~1945000~0,L05-22~E (M)~3509~3192000~1,L05-23~A (M)~2691~2380000~1,L05-23A~A~2691~2380000~0,L05-25~A (M)~2691~2380000~0,L05-26~A~2691~2380000~0,L05-27~A (M)~2691~2380000~0,L05-28~A~2691~2380000~0,L05-29~A (M)~2691~2380000~1,L05-30~A~2691~2380000~1,L05-31~A (M)~2691~2380000~1",
+"3A|L03A-01~D~4252~3883000~1,L03A-02~B~2433~2274000~0,L03A-03~B (M)~2433~2274000~1,L03A-03A~B~2433~2274000~1,L03A-05~B (M)~2433~2274000~1,L03A-06~D (M)~4252~3883000~1,,,,,,,,,,,,,,,,,,,,,,,,,",
+"3|L03-01~D2~4252~3860000~1,L03-02~B2 (M)~2476~2286000~1,L03-03~B2~2476~2286000~1,L03-03A~B2 (M)~2476~2286000~1,L03-05~D2 (M)~4252~3860000~1,L03-06~A2~2691~2439000~1,L03-07~A2 (M)~2691~2439000~1,L03-08~A2 (M)~2691~2439000~1,L03-09~A2~2691~2439000~0,L03-10~A2 (M)~2691~2439000~0,L03-11~A2~2691~2439000~1,L03-12~A2 (M)~2691~2439000~1,L03-13~A2~2691~2439000~1,L03-13A~E2~3498~3218000~1,L03-15~C~2153~1980000~1,L03-16~C (M)~2153~1980000~1,L03-17~C~2153~1980000~0,L03-18~C (M)~2153~1980000~1,L03-19~C~2153~1980000~1,L03-20~E2 (M)~3498~3218000~1,L03-21~A2 (M)~2691~2415000~0,L03-22~A2 (M)~2691~2415000~0,L03-23~A2~2691~2415000~0,L03-23A~A2 (M)~2691~2415000~1,L03-25~A2~2691~2415000~1,L03-26~A2 (M)~2691~2415000~1,L03-27~A2~2691~2415000~1,L03-28~A2 (M)~2691~2415000~0,,,",
+"2|L02-01~D~4252~3919000~1,L02-02~B~2433~2309000~1,L02-03~B (M)~2433~2309000~1,L02-03A~B~2433~2309000~1,L02-05~B (M)~2433~2309000~1,L02-06~D (M)~4252~3919000~1,L02-07~A~2691~2497000~1,L02-08~A (M)~2691~2497000~1,L02-09~A~2691~2497000~1,L02-10~A (M)~2691~2497000~1,L02-11~A~2691~2497000~0,L02-12~A (M)~2691~2497000~0,L02-13~A~2691~2497000~0,L02-13A~A (M)~2691~2497000~0,L02-15~A~2691~2497000~0,L02-16~E~3509~3286000~1,L02-17~C~2153~2039000~0,L02-18~C (M)~2153~2039000~1,L02-19~C~2153~2039000~0,L02-20~C (M)~2153~2039000~1,L02-21~C~2153~2039000~0,L02-22~E (M)~3509~3286000~1,L02-23~A (M)~2691~2474000~1,L02-23A~A~2691~2474000~0,L02-25~A (M)~2691~2474000~0,L02-26~A~2691~2474000~0,L02-27~A (M)~2691~2474000~0,L02-28~A~2691~2474000~0,L02-29~A (M)~2691~2474000~0,L02-30~A~2691~2474000~0,L02-31~A (M)~2691~2474000~1",
+"1|L01-01~D~4252~3977000~1,L01-02~B~2433~2368000~1,L01-03~B (M)~2433~2368000~1,L01-03A~B~2433~2368000~1,L01-05~B (M)~2433~2368000~0,L01-06~D (M)~4252~3977000~1,L01-07~A~2691~2556000~1,L01-08~A (M)~2691~2556000~1,L01-09~A~2691~2556000~1,L01-10~A (M)~2691~2556000~0,L01-11~A~2691~2556000~1,L01-12~A (M)~2691~2556000~1,L01-13~A~2691~2556000~1,L01-13A~A (M)~2691~2556000~0,L01-15~A~2691~2556000~0,L01-16~E~3509~3344000~1,L01-17~C~2153~2097000~1,L01-18~C (M)~2153~2097000~1,L01-19~C~2153~2097000~1,L01-20~C (M)~2153~2097000~1,L01-21~C~2153~2097000~1,L01-22~E (M)~3509~3344000~1,L01-23~A (M)~2691~2533000~0,L01-23A~A~2691~2533000~0,L01-25~A (M)~2691~2533000~1,L01-26~A~2691~2533000~1,L01-27~A (M)~2691~2533000~1,L01-28~A~2691~2533000~1,L01-29~A (M)~2691~2533000~1,L01-30~A~2691~2533000~1,L01-31~A (M)~2691~2533000~1",
+"G|G-01~D1~5285~5079000~1,G-02~B1~2422~2685000~1,G-03~B1 (M)~2422~2685000~1,G-03A~B1 (M)~2422~2820000~1,G-05~D1 (M)~5285~5333000~1,G-06~A1~2874~3009000~1,G-07~A1 (M)~2874~3009000~0,G-08~A1~2874~3009000~0,G-09~A1 (M)~2874~3009000~0,G-10~A1~2874~3009000~0,G-11~A1 (M)~2874~3009000~0,G-12~A1~2874~3009000~0,G-13~A1 (M)~2874~3009000~0,G-13A~A1~2874~3009000~0,G-15~E1~3713~3794000~1,G-16~E1 (M)~3713~3794000~0,G-17~A1 (M)~2874~2986000~1,G-18~A1~2874~2986000~1,G-19~A1 (M)~2874~2986000~1,G-20~A1~2874~2986000~0,G-21~A1 (M)~2874~2986000~0,G-22~A1~2874~2986000~0,G-23~A1 (M)~2874~2986000~0,G-23A~A1~2874~2986000~0,G-25~A1 (M)~2874~2986000~1,,,,,,"
 ];
 
 const floors = FLOORS.map(s => {
   const [floor, list] = s.split("|");
   const units = list.split(",").map(u => {
     if (!u) return null;
-    const [no, layout, sqft, sold] = u.split("~");
-    return { no, layout, sqft: Number(sqft), sold: sold === "1" };
+    const [no, layout, sqft, price, sold] = u.split("~");
+    return { no, layout, sqft: Number(sqft), price: Number(price), sold: sold === "1" };
   });
   return { floor, units };
 });
 const cols = Math.max(...floors.map(f => f.units.length));
+const units = new Map(floors.flatMap(f => f.units.filter(Boolean).map(u => [u.no, u])));
+const rm = n => "RM " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 let total = 0, avail = 0;
 let html = '<div class="wrap-unit"><div class="roof"></div><table class="floor"><thead><tr><td class="idx">Floor</td><td class="more"></td>';
 for (let c = 1; c <= cols; c++) html += `<td class="cell">${String(c).padStart(2, "0")}</td>`;
 html += "</tr></thead><tbody>";
 for (const f of floors) {
-  html += `<tr><td class="idx">${f.floor}</td><td class="more"><p>Unit No.</p><p>Unit Layout</p><p>Unit Type</p><p>Build Up Area</p><p>Bumi</p></td>`;
+  html += `<tr><td class="idx">${f.floor}</td><td class="more"><p>Unit No.</p><p>Unit Layout</p><p>Unit Type</p><p>List Price</p><p>Build Up Area</p><p>Bumi</p></td>`;
   for (let c = 0; c < cols; c++) {
     const u = f.units[c];
     if (!u) { html += '<td class="cell"></td>'; continue; }
     total++; if (!u.sold) avail++;
     html += `<td class="cell"><div class="room${u.sold ? " sold" : ""}" data-no="${u.no}" title="${u.no} · ${u.sold ? "Sold" : "Available"}">` +
-      `<p class="num">${u.no}</p><p>${u.layout}</p><p></p><p>${u.sqft.toLocaleString("en-US")} sqft</p><p>Non_Bumi</p></div></td>`;
+      `<p class="num">${u.no}</p><p>${u.layout}</p><p></p><p>${rm(u.price)}</p><p>${u.sqft.toLocaleString("en-US")} sqft</p><p>Non_Bumi</p></div></td>`;
   }
   html += "</tr>";
 }
@@ -192,6 +227,36 @@ function search() {
 document.getElementById("go").addEventListener("click", search);
 q.addEventListener("keydown", e => { if (e.key === "Enter") search(); });
 q.addEventListener("input", () => { if (!q.value.trim()) search(); });
+
+// Unit detail side panel, available units only
+const panel = document.getElementById("panel");
+const mask = document.getElementById("mask");
+let picked = null;
+function openPanel(el) {
+  const u = units.get(el.dataset.no);
+  document.getElementById("p-title").textContent = `THE NEX-STRATIFIED INDUSTRIAL PARCEL-STRATIFIED INDUSTRIAL PARCEL-${u.no}`;
+  const rows = [
+    ["Sales Status", "Available"], ["Room Type", ""], ["Car Park", ""],
+    ["Unit Layout", u.layout],
+    ["Build Up Area", u.sqft.toLocaleString("en-US", { minimumFractionDigits: 2 })],
+    ["Land Area", "0.00"], ["List Price", rm(u.price)], ["Bumi", "No"]
+  ];
+  document.getElementById("p-rows").innerHTML = rows.map(([k, v]) => `<div class="p-row"><span>${k}</span><span>${v}</span></div>`).join("");
+  if (picked) picked.classList.remove("picked");
+  picked = el; el.classList.add("picked");
+  panel.classList.add("open"); mask.classList.add("open");
+}
+function closePanel() {
+  panel.classList.remove("open"); mask.classList.remove("open");
+  if (picked) { picked.classList.remove("picked"); picked = null; }
+}
+document.getElementById("board").addEventListener("click", e => {
+  const el = e.target.closest(".room");
+  if (el && !el.classList.contains("sold")) openPanel(el);
+});
+document.getElementById("p-close").addEventListener("click", closePanel);
+mask.addEventListener("click", closePanel);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePanel(); });
 </script>
 </body>
 </html>
