@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sales Booking · The Nex</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: "PingFang SC", "Microsoft Yahei", Verdana, Arial, Helvetica, sans-serif;
+    font-size: 13px; color: #222; background: #fff;
+    display: flex; flex-direction: column;
+  }
+
+  /* top bar */
+  .topbar {
+    height: 50px; flex: none; background: #1f232b; color: #fff;
+    display: flex; align-items: center; padding: 0 20px; gap: 18px;
+  }
+  .topbar .brand { height: 46px; width: auto; display: block; }
+  .topbar .sep { width: 1px; height: 18px; background: #555; }
+  .topbar .title { font-size: 16px; color: #d8dbe2; white-space: nowrap; }
+  .topbar .updated { margin-left: auto; font-size: 12px; color: #9aa0ab; white-space: nowrap; }
+
+  /* filter row */
+  .filters {
+    flex: none; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 18px 20px 14px;
+  }
+  .filters label { font-size: 13px; }
+  .select, .input {
+    height: 30px; border: 1px solid #d9d9d9; border-radius: 2px; background: #fff;
+    font: inherit; font-size: 14px; padding: 0 10px; color: #222;
+  }
+  .select { min-width: 240px; max-width: 100%; }
+  .input { width: 165px; }
+  .input::placeholder { color: #aaa; }
+  .btn {
+    height: 30px; padding: 0 20px; border: 0; border-radius: 2px;
+    background: #3a6cf4; color: #fff; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  .btn:hover { background: #2f5de0; }
+
+  /* group / block tabs row */
+  .tabsbar {
+    flex: none; margin: 0 20px; background: #e8eef7;
+    display: flex; align-items: center; gap: 30px; padding: 0 20px; height: 40px;
+  }
+  .tabsbar .group {
+    height: 28px; min-width: 126px; border: 1px solid #d9d9d9; background: #fff;
+    display: flex; align-items: center; padding: 0 10px; color: #333; font-size: 13px;
+  }
+  .tabsbar .tab {
+    height: 40px; display: flex; align-items: center; padding: 0 2px;
+    font-size: 13px; border-bottom: 2px solid #4fb47f; color: #222;
+  }
+  .tabsbar .summary { margin-left: auto; font-size: 13px; color: #3a6cf4; white-space: nowrap; }
+
+  /* grid */
+  .board { flex: 1; min-height: 0; overflow: auto; margin: 0 20px; padding: 40px 20px 12px; }
+  .wrap-unit { display: inline-block; }
+  .roof {
+    height: 25px; margin-left: 204px; background: #7cc98f;
+    clip-path: polygon(25px 0, 100% 0, 100% 100%, 0 100%);
+  }
+  table.floor { border-collapse: separate; border-spacing: 0; border-top: 1px solid #4fb47f; border-left: 1px solid #4fb47f; }
+  table.floor td { border-right: 1px solid #4fb47f; border-bottom: 1px solid #4fb47f; }
+  thead td { height: 27px; text-align: center; background: #fff; font-size: 13px; }
+  td.idx { width: 80px; min-width: 80px; text-align: center; background: #fff; }
+  td.more { width: 112px; min-width: 112px; padding: 2px 0 2px 6px; color: #333; font-size: 12px; white-space: nowrap; }
+  td.more p { margin: 0; line-height: 22px; }
+  td.cell { width: 120px; min-width: 120px; padding: 2px; }
+  .room {
+    width: 116px; height: 112px; border: 1px solid #e7e7eb; font-size: 12px;
+    background: #ddf8ff; color: #222; cursor: default; transition: transform .08s;
+  }
+  .room.sold { background: #f5545a; color: #fff; }
+  .room p { margin: 0; line-height: 22px; height: 22px; text-align: right; padding: 0 4px; white-space: nowrap; overflow: hidden; }
+  .room p.num { font-size: 20px; text-align: center; }
+  .room.hit { outline: 3px solid #3a6cf4; outline-offset: -1px; }
+  .room.dim { opacity: .25; }
+
+  /* legend */
+  .legend {
+    flex: none; display: flex; gap: 30px; padding: 12px 40px 16px; list-style: none; margin: 0;
+  }
+  .legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .legend b { width: 16px; height: 16px; display: inline-block; border: 1px solid #999; }
+
+  @media (max-width: 640px) {
+    .topbar { padding: 0 16px; gap: 10px; }
+    .topbar .updated { display: none; }
+    .filters { padding: 14px 16px 10px; }
+    .select { min-width: 0; flex: 1; }
+    .tabsbar { margin: 0 16px; padding: 0 12px; gap: 14px; }
+    .tabsbar .group { display: none; }
+    .board { margin: 0 16px; padding: 30px 0 10px; }
+    .legend { padding: 10px 16px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <img class="brand" src="data:image/png;base64,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" alt="MytePro">
+  <span class="sep"></span>
+  <span class="title">Sales Booking</span>
+  <span class="updated" id="updated"></span>
+</header>
+
+<div class="filters">
+  <label for="project">Project</label>
+  <select class="select" id="project"><option>THE NEX – STRATIFIED INDUSTRIAL PARCEL</option></select>
+  <input class="input" id="q" placeholder="Input Unit" autocomplete="off">
+  <button class="btn" id="go">Search</button>
+</div>
+
+<div class="tabsbar">
+  <span class="group">No Group</span>
+  <span class="tab">STRATIFIED</span>
+  <span class="summary" id="summary"></span>
+</div>
+
+<div class="board" id="board"></div>
+
+<ul class="legend">
+  <li><b style="background:#ddf8ff"></b>Available</li>
+  <li><b style="background:#f5545a"></b>Sold</li>
+</ul>
+
+<script>
+// Last updated date, shown top right. Change when the data below is refreshed.
+const UPDATED = "2026-11-10";
+
+// One string per floor, top to bottom: "floor|unit~layout~sqft~sold,..." (sold: 1 = red, 0 = available; empty = no unit)
+const FLOORS = [
+"8|L08-01~D~4252~1,L08-02~B~2433~1,L08-03~B (M)~2433~1,L08-03A~B~2433~1,L08-05~B (M)~2433~0,L08-06~D (M)~4252~1,L08-07~A~2691~1,L08-08~A (M)~2691~1,L08-09~A~2691~1,L08-10~A (M)~2691~1,L08-11~A~2691~0,L08-12~A (M)~2691~0,L08-13~A~2691~0,L08-13A~A (M)~2691~0,L08-15~A~2691~0,L08-16~E~3509~1,L08-17~C~2153~1,L08-18~C (M)~2153~1,L08-19~C~2153~1,L08-20~C (M)~2153~1,L08-21~C~2153~1,L08-22~E (M)~3509~1,L08-23~A (M)~2691~0,L08-23A~A~2691~0,L08-25~A (M)~2691~1,L08-26~A~2691~0,L08-27~A (M)~2691~0,L08-28~A~2691~0,L08-29~A (M)~2691~1,L08-30~A~2691~0,L08-31~A (M)~2691~0",
+"7|L07-01~D~4252~1,L07-02~B~2433~0,L07-03~B (M)~2433~1,L07-03A~B~2433~1,L07-05~B (M)~2433~0,L07-06~D (M)~4252~1,L07-07~A~2691~1,L07-08~A (M)~2691~1,L07-09~A~2691~1,L07-10~A (M)~2691~0,L07-11~A~2691~0,L07-12~A (M)~2691~0,L07-13~A~2691~1,L07-13A~A (M)~2691~1,L07-15~A~2691~0,L07-16~E~3509~1,L07-17~C~2153~1,L07-18~C (M)~2153~1,L07-19~C~2153~1,L07-20~C (M)~2153~1,L07-21~C~2153~1,L07-22~E (M)~3509~1,L07-23~A (M)~2691~0,L07-23A~A~2691~0,L07-25~A (M)~2691~0,L07-26~A~2691~0,L07-27~A (M)~2691~0,L07-28~A~2691~0,L07-29~A (M)~2691~0,L07-30~A~2691~0,L07-31~A (M)~2691~0",
+"6|L06-01~D2~4252~1,L06-02~B2~2476~1,L06-03~B2 (M)~2476~1,L06-03A~B2~2476~1,L06-05~D2 (M)~4252~1,L06-06~A2~2691~0,L06-07~A2 (M)~2691~0,L06-08~A2~2691~0,L06-09~A2 (M)~2691~1,L06-10~A2~2691~0,L06-11~A2 (M)~2691~1,L06-12~A2~2691~1,L06-13~A2~2691~0,L06-13A~E2~3498~1,L06-15~C~2153~1,L06-16~C (M)~2153~1,L06-17~C~2153~1,L06-18~C (M)~2153~1,L06-19~C~2153~1,L06-20~E2 (M)~3498~1,L06-21~A2 (M)~2691~0,L06-22~A2~2691~0,L06-23~A2 (M)~2691~0,L06-23A~A2~2691~0,L06-25~A2 (M)~2691~0,L06-26~A2~2691~1,L06-27~A2~2691~1,L06-28~A2 (M)~2691~1,,,",
+"5|L05-01~D~4252~1,L05-02~B~2433~1,L05-03~B (M)~2433~0,L05-03A~B~2433~1,L05-05~B (M)~2433~1,L05-06~D (M)~4252~1,L05-07~A~2691~0,L05-08~A (M)~2691~0,L05-09~A~2691~0,L05-10~A (M)~2691~0,L05-11~A~2691~0,L05-12~A (M)~2691~0,L05-13~A~2691~0,L05-13A~A (M)~2691~0,L05-15~A~2691~0,L05-16~E~3509~1,L05-17~C~2153~1,L05-18~C (M)~2153~1,L05-19~C~2153~1,L05-20~C (M)~2153~1,L05-21~C~2153~0,L05-22~E (M)~3509~1,L05-23~A (M)~2691~1,L05-23A~A~2691~0,L05-25~A (M)~2691~0,L05-26~A~2691~0,L05-27~A (M)~2691~0,L05-28~A~2691~0,L05-29~A (M)~2691~1,L05-30~A~2691~1,L05-31~A (M)~2691~1",
+"3A|L03A-01~D~4252~1,L03A-02~B~2433~0,L03A-03~B (M)~2433~1,L03A-03A~B~2433~1,L03A-05~B (M)~2433~1,L03A-06~D (M)~4252~1,,,,,,,,,,,,,,,,,,,,,,,,,",
+"3|L03-01~D2~4252~1,L03-02~B2 (M)~2476~1,L03-03~B2~2476~1,L03-03A~B2 (M)~2476~1,L03-05~D2 (M)~4252~1,L03-06~A2~2691~1,L03-07~A2 (M)~2691~1,L03-08~A2 (M)~2691~1,L03-09~A2~2691~0,L03-10~A2 (M)~2691~0,L03-11~A2~2691~1,L03-12~A2 (M)~2691~1,L03-13~A2~2691~1,L03-13A~E2~3498~1,L03-15~C~2153~1,L03-16~C (M)~2153~1,L03-17~C~2153~0,L03-18~C (M)~2153~1,L03-19~C~2153~1,L03-20~E2 (M)~3498~1,L03-21~A2 (M)~2691~0,L03-22~A2 (M)~2691~0,L03-23~A2~2691~0,L03-23A~A2 (M)~2691~1,L03-25~A2~2691~1,L03-26~A2 (M)~2691~1,L03-27~A2~2691~1,L03-28~A2 (M)~2691~0,,,",
+"2|L02-01~D~4252~1,L02-02~B~2433~1,L02-03~B (M)~2433~1,L02-03A~B~2433~1,L02-05~B (M)~2433~1,L02-06~D (M)~4252~1,L02-07~A~2691~1,L02-08~A (M)~2691~1,L02-09~A~2691~1,L02-10~A (M)~2691~1,L02-11~A~2691~0,L02-12~A (M)~2691~0,L02-13~A~2691~0,L02-13A~A (M)~2691~0,L02-15~A~2691~0,L02-16~E~3509~1,L02-17~C~2153~0,L02-18~C (M)~2153~1,L02-19~C~2153~0,L02-20~C (M)~2153~1,L02-21~C~2153~0,L02-22~E (M)~3509~1,L02-23~A (M)~2691~1,L02-23A~A~2691~0,L02-25~A (M)~2691~0,L02-26~A~2691~0,L02-27~A (M)~2691~0,L02-28~A~2691~0,L02-29~A (M)~2691~0,L02-30~A~2691~0,L02-31~A (M)~2691~1",
+"1|L01-01~D~4252~1,L01-02~B~2433~1,L01-03~B (M)~2433~1,L01-03A~B~2433~1,L01-05~B (M)~2433~0,L01-06~D (M)~4252~1,L01-07~A~2691~1,L01-08~A (M)~2691~1,L01-09~A~2691~1,L01-10~A (M)~2691~0,L01-11~A~2691~1,L01-12~A (M)~2691~1,L01-13~A~2691~1,L01-13A~A (M)~2691~0,L01-15~A~2691~0,L01-16~E~3509~1,L01-17~C~2153~1,L01-18~C (M)~2153~1,L01-19~C~2153~1,L01-20~C (M)~2153~1,L01-21~C~2153~1,L01-22~E (M)~3509~1,L01-23~A (M)~2691~0,L01-23A~A~2691~0,L01-25~A (M)~2691~1,L01-26~A~2691~1,L01-27~A (M)~2691~1,L01-28~A~2691~1,L01-29~A (M)~2691~1,L01-30~A~2691~1,L01-31~A (M)~2691~1",
+"G|G-01~D1~5285~1,G-02~B1~2422~1,G-03~B1 (M)~2422~1,G-03A~B1 (M)~2422~1,G-05~D1 (M)~5285~1,G-06~A1~2874~1,G-07~A1 (M)~2874~0,G-08~A1~2874~0,G-09~A1 (M)~2874~0,G-10~A1~2874~0,G-11~A1 (M)~2874~0,G-12~A1~2874~0,G-13~A1 (M)~2874~0,G-13A~A1~2874~0,G-15~E1~3713~1,G-16~E1 (M)~3713~0,G-17~A1 (M)~2874~1,G-18~A1~2874~1,G-19~A1 (M)~2874~1,G-20~A1~2874~0,G-21~A1 (M)~2874~0,G-22~A1~2874~0,G-23~A1 (M)~2874~0,G-23A~A1~2874~0,G-25~A1 (M)~2874~1,,,,,,"
+];
+
+const floors = FLOORS.map(s => {
+  const [floor, list] = s.split("|");
+  const units = list.split(",").map(u => {
+    if (!u) return null;
+    const [no, layout, sqft, sold] = u.split("~");
+    return { no, layout, sqft: Number(sqft), sold: sold === "1" };
+  });
+  return { floor, units };
+});
+const cols = Math.max(...floors.map(f => f.units.length));
+
+let total = 0, avail = 0;
+let html = '<div class="wrap-unit"><div class="roof"></div><table class="floor"><thead><tr><td class="idx">Floor</td><td class="more"></td>';
+for (let c = 1; c <= cols; c++) html += `<td class="cell">${String(c).padStart(2, "0")}</td>`;
+html += "</tr></thead><tbody>";
+for (const f of floors) {
+  html += `<tr><td class="idx">${f.floor}</td><td class="more"><p>Unit No.</p><p>Unit Layout</p><p>Unit Type</p><p>Build Up Area</p><p>Bumi</p></td>`;
+  for (let c = 0; c < cols; c++) {
+    const u = f.units[c];
+    if (!u) { html += '<td class="cell"></td>'; continue; }
+    total++; if (!u.sold) avail++;
+    html += `<td class="cell"><div class="room${u.sold ? " sold" : ""}" data-no="${u.no}" title="${u.no} · ${u.sold ? "Sold" : "Available"}">` +
+      `<p class="num">${u.no}</p><p>${u.layout}</p><p></p><p>${u.sqft.toLocaleString("en-US")} sqft</p><p>Non_Bumi</p></div></td>`;
+  }
+  html += "</tr>";
+}
+html += "</tbody></table></div>";
+document.getElementById("board").innerHTML = html;
+document.getElementById("summary").textContent = `Available ${avail} / ${total} units`;
+document.getElementById("updated").textContent = `Updated ${UPDATED}`;
+
+const q = document.getElementById("q");
+function search() {
+  const term = q.value.trim().toUpperCase();
+  let first = null;
+  document.querySelectorAll(".room").forEach(el => {
+    const hit = term && el.dataset.no.toUpperCase().includes(term);
+    el.classList.toggle("hit", !!hit);
+    el.classList.toggle("dim", !!term && !hit);
+    if (hit && !first) first = el;
+  });
+  if (first) first.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
+}
+document.getElementById("go").addEventListener("click", search);
+q.addEventListener("keydown", e => { if (e.key === "Enter") search(); });
+q.addEventListener("input", () => { if (!q.value.trim()) search(); });
+</script>
+</body>
+</html>
