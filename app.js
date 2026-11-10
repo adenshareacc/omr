@@ -248,7 +248,7 @@ function renderNav() {
     const picked = compareList().length;
     html += link("#/projects", "Projects") + link("#/vs", `${T("项目对比", "Compare")}${picked ? ` (${picked})` : ""}`) + (SHOW_COMPARE ? link("#/compare", "价格对比") : "");
     if (isAdmin()) html += link("#/admin/upload", "上传资料") + link("#/admin/users", "Agents") + (SHOW_COMPARE ? link("#/admin/comparables", "成交记录") : "");
-    html += `<a href="#/logout">${T("登出", "Log out")}</a>`;
+    html += link("#/me", T("我的资料", "My profile")) + `<a href="#/logout">${T("登出", "Log out")}</a>`;
   } else if (me) {
     html += `<a href="#/logout">${T("登出", "Log out")}</a>`;
   } else {
@@ -265,6 +265,7 @@ const routes = [
   [/^#\/register$/, viewRegister, "public"],
   [/^#\/logout$/, viewLogout, "public"],
   [/^#\/pending$/, viewPending, "user"],
+  [/^#\/me$/, viewMe, "approved"],
   [/^#\/projects$/, viewProjects, "approved"],
   [/^#\/p\/([^/?]+)$/, viewProject, "approved"],
   [/^#\/vs$/, viewVersus, "approved"],
@@ -369,6 +370,24 @@ function viewRegister() {
     }
     await loadMe();
     location.hash = "#/pending";
+  };
+}
+
+function viewMe() {
+  const p = me.profile;
+  render(`<div class="card auth"><h1>${T("我的资料", "My profile")}</h1>
+    <p class="muted small">${T("这里的名字和电话会自动加在复制的 blasting 后面。", "Your name and phone are added to the end of every blast you copy.")}</p>
+    <form id="f"><label>${T("名字", "Name")}</label><input name="name" value="${e(p.name)}" maxlength="80" required>
+    <label>${T("电话（WhatsApp）", "Phone (WhatsApp)")}</label><input name="phone" value="${e(p.phone)}" maxlength="30">
+    <label>Email</label><input value="${e(p.email || me.user.email)}" disabled>
+    <p><button class="btn" type="submit">${T("保存", "Save")}</button></p></form></div>`);
+  $("#f").onsubmit = async ev => {
+    ev.preventDefault();
+    const f = new FormData(ev.target);
+    const { error } = await sb.rpc("update_my_profile", { p_name: f.get("name"), p_phone: f.get("phone") });
+    if (error) { flash(T("保存失败：", "Could not save: ") + error.message); return; }
+    await loadMe();
+    flash(T("已保存。", "Saved."));
   };
 }
 
