@@ -284,6 +284,10 @@ body.proj main.wrap { max-width: 1320px; }
 .pp-fig figcaption { padding: 6px 12px; font-weight: 600; color: var(--pn); border-top: 1px solid #ebeaf2; }
 .pp-fig label { display: block; padding: 0 12px 8px; margin: 0; }
 .pp-fig.off { opacity: .35; }
+.pp-shots { grid-template-columns: 1fr 1fr; }
+.pp-shots .pp-fig img { aspect-ratio: 3 / 2; object-fit: cover; }
+.pp-shots .pp-fig.wide { grid-column: 1 / -1; }
+.pp-shots .pp-fig.wide img { aspect-ratio: auto; object-fit: contain; }
 .pp-contact { display: flex; justify-content: space-between; align-items: center; gap: 20px; background: var(--pn); color: #fff; border-radius: 16px; padding: 26px 32px; margin: 24px 44px 10px; break-inside: avoid; }
 .pp-contact span { display: block; font-size: 13px; color: #d6d4ea; }
 .pp-contact .nm { display: block; font-size: 24px; margin: 2px 0 8px; }
@@ -310,6 +314,8 @@ body.proj main.wrap { max-width: 1320px; }
   .pp-cover .pp-hero { aspect-ratio: auto; flex: 0 0 165mm; }
   .pp-cover .pp-band { flex: 1; padding: 12mm 16mm 12mm; display: flex; flex-direction: column; }
   .pp-cover .pp-by { margin-top: auto; }
+  .pp-shots .pp-fig img { max-height: 58mm; }  /* six photos per A4 page */
+  .pp-shots .pp-fig.wide img { max-height: 90mm; }
   .pp-plans .pp-fig img { max-height: 105mm; }  /* two floor plans per A4 page */
   .pp-contact { margin: 0 0 6mm; }
   .pp-disc { padding: 0; }

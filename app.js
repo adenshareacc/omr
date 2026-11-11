@@ -821,6 +821,9 @@ async function viewProposal(slug) {
   const stored = p.files.filter(f => f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
   const signed = await signUrls(stored.map(f => f.storage_path));
   const photos = stored.filter(f => f.doc_type === PHOTO);
+  // Photo caption lives in unit_type; "用途：Office" / "Use: Office" marks a usage reference picture.
+  const USE = /^(用途|use)\s*[:：]?\s*/i;
+  const usage = photos.filter(f => USE.test(f.unit_type || "")), views = photos.slice(1).filter(f => !usage.includes(f));
   // A layout uploaded with type "Master plan" is the site plan; the rest are per-type floor plans.
   const isMaster = f => /master|总图|site plan/i.test(f.unit_type || "");
   const plans = stored.filter(f => f.doc_type === PLAN && f.unit_type);
@@ -830,6 +833,9 @@ async function viewProposal(slug) {
   const fig = (f, on) => `<figure class="pp-fig${on ? "" : " off"}"><img src="${e(signed[f.storage_path])}" alt="">
     <figcaption contenteditable>${e(isMaster(f) ? "Master Plan" : f.unit_type)}</figcaption>
     <label class="noprint small"><input type="checkbox" ${on ? "checked" : ""}> ${T("放进 PDF", "Include")}</label></figure>`;
+  const shot = f => `<figure class="pp-fig"><img src="${e(signed[f.storage_path])}" alt="">
+    <figcaption contenteditable>${e((f.unit_type || "").replace(USE, ""))}</figcaption>
+    <label class="noprint small"><input type="checkbox" checked> ${T("放进 PDF", "Include")}</label></figure>`;
   const stat = (label, value) => value ? `<div><span>${label}</span><b contenteditable>${e(value)}</b></div>` : "";
   const today = new Date().toISOString().slice(0, 10);
   const [access, info0] = takeItems(customerSafe(T(p.info_md, p.info_md_en || p.info_md), p), ACCESS_ITEM);
@@ -879,6 +885,12 @@ async function viewProposal(slug) {
       <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
     </section>
 
+    ${views.length ? `<section class="pp-page">${kick(T("外观与设施", "Exterior & facilities"))}<h2 contenteditable>${T("项目外观与设施", "Exterior & facilities")}</h2>
+      <div class="pp-figs pp-shots">${views.map(shot).join("")}</div></section>` : ""}
+    ${usage.length ? `<section class="pp-page">${kick(T("用途参考", "Usage ideas"))}<h2 contenteditable>${T("适合用途参考", "What the space can be used for")}</h2>
+      <p class="muted" contenteditable>${T("同一个单位可以按业务需要规划成不同用途（示意图，仅供参考）。", "One unit can be fitted out for different business needs (artist's impressions, for reference only).")}</p>
+      <div class="pp-figs pp-shots">${usage.map(shot).join("")}</div></section>` : ""}
+
     ${pkg || units.length ? `<section class="pp-page">
       ${kick(T("价格与供款", "Price & instalment"))}<h2 contenteditable>${T("价格、配套与每月供款", "Prices, package & monthly instalment")}</h2>
       ${pkg ? `<div class="pp-card"><h3>🎁 ${T("配套优惠", "Package")}</h3><div class="md" contenteditable>${md(pkg)}</div></div>` : ""}
@@ -916,6 +928,11 @@ async function viewProposal(slug) {
     @bottom-right { content: "${`${me.profile.name || ""} · ${phone}`.replace(/["\\]/g, "")}"; font-size: 8pt; color: #666; } }
     @page :first { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }</style>`);
 
+  // Wide pictures (e.g. a row of usage cards) take the full row so cropping doesn't cut them.
+  document.querySelectorAll(".pp-shots img").forEach(im => {
+    const fit = () => im.closest("figure").classList.toggle("wide", im.naturalWidth > 1.9 * im.naturalHeight);
+    im.complete ? fit() : im.onload = fit;
+  });
   document.querySelectorAll(".pp-fig input").forEach(box => box.onchange = () => box.closest("figure").classList.toggle("off", !box.checked));
   const img = $("#hero-img");
   if (img) {
