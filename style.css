@@ -300,6 +300,19 @@ body.proj main.wrap { max-width: 1320px; }
   .pp-page, .pp-band { padding: 22px 16px; } .pp-keys { grid-template-columns: 1fr; } .pp-band h1 { font-size: 26px; }
   .pp-table { font-size: 12px; } .pp-contact { margin: 16px; flex-direction: column; align-items: flex-start; } .pp-disc { padding: 0 16px 20px; }
 }
+/* PDF button (makePdf): the same look as print, laid out at A4 width (182 mm content = 688 px) */
+body.pdfmake .noprint, body.pdfmake .pp-fig.off { display: none !important; }
+body.pdfmake .pp-page { padding: 0; border: 0; }
+body.pdfmake .pp-cover { width: 794px; height: 1120px;  /* just under one A4 page so html2pdf makes no second page */ display: flex; flex-direction: column; }
+body.pdfmake .pp-cover .pp-hero { aspect-ratio: auto; flex: 0 0 624px; }
+body.pdfmake .pp-cover .pp-band { flex: 1; padding: 45px 60px; display: flex; flex-direction: column; }
+body.pdfmake .pp-cover .pp-by { margin-top: auto; }
+body.pdfmake .pp-shots .pp-fig img { max-height: 219px; }
+body.pdfmake .pp-shots .pp-fig.wide img { max-height: 340px; }
+body.pdfmake .pp-plans .pp-fig img { max-height: 397px; }
+body.pdfmake .pp-contact { margin: 0 0 22px; }
+body.pdfmake .pp-disc { padding: 0; }
+body.pdfmake .pp [contenteditable]:hover { outline: 0; }
 @media print {
   @page { size: A4; margin: 14mm 14mm 16mm; }
   body.proposal { background: #fff; }

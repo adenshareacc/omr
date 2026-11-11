@@ -854,7 +854,8 @@ async function viewProposal(slug) {
   render(`<div class="pp-bar noprint card">
       <a href="#/p/${encodeURIComponent(p.slug)}">← ${T("回到项目", "Back to project")}</a>
       <span class="small muted">${T("文字可以直接点进去改；不要的图片取消勾选；然后按右边的按钮，选「存成 PDF」。", "Click any text to edit it, untick pictures you don't want, then press the button and choose “Save as PDF”.")}</span>
-      <button class="btn" id="print">${T("打印 / 存 PDF", "Print / Save PDF")}</button></div>
+      <button class="btn ghost sm" id="print">${T("打印", "Print")}</button>
+      <button class="btn" id="pdf">📄 ${T("生成 PDF", "Make PDF")}</button></div>
   <div class="pp">
     <section class="pp-page pp-cover">
       ${photos.length ? `<div class="pp-hero"><img src="${e(signed[photos[0].storage_path])}" alt="" id="hero-img">
@@ -961,6 +962,60 @@ async function viewProposal(slug) {
   }
   if ($("#l_rows")) { document.querySelectorAll(".pp-loan-in input").forEach(i => i.oninput = loan); loan(); }
   $("#print").onclick = () => window.print();
+  const pdfBtn = $("#pdf"), pdfLabel = pdfBtn.textContent;
+  // Editing after the PDF is made means it must be made again.
+  $(".pp").addEventListener("input", () => { pdfBtn.file = null; pdfBtn.textContent = pdfLabel; });
+  pdfBtn.onclick = async () => {
+    // Sharing needs a fresh tap, so on phones the first tap makes the file and the second sends it (e.g. to WhatsApp).
+    if (pdfBtn.file) return navigator.share({ files: [pdfBtn.file] }).catch(() => {});
+    pdfBtn.disabled = true; pdfBtn.textContent = T("生成中…", "Making PDF…");
+    try {
+      const file = await makePdf(`${title} - ${me.profile.name || "Proposal"}`, title, `${me.profile.name || ""} · ${phone}`);
+      if (navigator.canShare?.({ files: [file] })) { pdfBtn.file = file; pdfBtn.textContent = T("📤 发送 PDF", "📤 Send PDF"); }
+      else { const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); pdfBtn.textContent = pdfLabel; }
+    } catch (err) { flash(T("PDF 生成失败：", "Could not make the PDF: ") + (err.message || err)); pdfBtn.textContent = pdfLabel; }
+    pdfBtn.disabled = false;
+  };
+}
+
+// One-tap PDF of the proposal page. html2pdf (html2canvas + jsPDF, loaded on first use) turns each part into pictures,
+// so it looks the same on phones; each section starts a new A4 page and the contact card follows the last one.
+async function makePdf(name, footLeft, footRight) {
+  if (!window.html2pdf) await new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    s.onload = ok; s.onerror = () => bad(new Error("html2pdf")); document.head.append(s);
+  });
+  const W = 182, H = 267, M = 14;  // A4 content box in mm
+  // windowWidth keeps phone layouts (narrow-screen CSS) out of the PDF.
+  const opt = (w, h) => ({ margin: 0, jsPDF: { unit: "mm", format: [w, h] }, html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 },
+    pagebreak: { mode: "css", avoid: [".pp-fig", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
+  document.body.classList.add("pdfmake");
+  try {
+    const pdf = await html2pdf().set(opt(210, 297)).from($(".pp-cover")).toPdf().get("pdf");
+    let y = H;  // used mm on the current page; H = full
+    const put = (canvas, fresh) => {
+      const px = canvas.width / W, page = Math.floor(H * px);
+      for (let top = 0; top < canvas.height; top += page) {
+        const h = Math.min(page, canvas.height - top);
+        if (fresh || top > 0 || y + h / px > H) { pdf.addPage("a4"); y = 0; }
+        fresh = false;
+        const c = document.createElement("canvas"); c.width = canvas.width; c.height = h;
+        c.getContext("2d").drawImage(canvas, 0, top, canvas.width, h, 0, 0, canvas.width, h);
+        pdf.addImage(c.toDataURL("image/jpeg", .88), "JPEG", M, M + y, W, h / px);
+        y += h / px;
+      }
+    };
+    const parts = [...document.querySelectorAll(".pp > .pp-page:not(.pp-cover), .pp > .pp-contact, .pp > .pp-disc")];
+    for (const el of parts) put(await html2pdf().set(opt(W, H)).from(el).toCanvas().get("canvas"), el.classList.contains("pp-page"));
+    // Running footer drawn as a picture so Chinese titles need no PDF font.
+    const f = document.createElement("canvas"), g = f.getContext("2d");
+    f.width = 2000; f.height = 44; g.font = "28px system-ui, sans-serif";
+    g.fillStyle = "#23205a"; g.fillText(footLeft, 0, 32); g.textAlign = "right"; g.fillStyle = "#666"; g.fillText(footRight, 2000, 32);
+    const foot = f.toDataURL("image/png");
+    for (let i = 2; i <= pdf.getNumberOfPages(); i++) { pdf.setPage(i); pdf.addImage(foot, "PNG", M, 297 - 11, W, W * 44 / 2000); }
+    return new File([pdf.output("blob")], `${name}.pdf`.replace(/[\\/:*?"<>|]/g, ""), { type: "application/pdf" });
+  } finally { document.body.classList.remove("pdfmake"); }
 }
 
 function compsTable(comps) {
