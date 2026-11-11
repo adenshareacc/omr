@@ -188,16 +188,12 @@ const FLOORS = [
 "G|G-01~D1~5285~5079000~1,G-02~B1~2422~2685000~1,G-03~B1 (M)~2422~2685000~1,G-03A~B1 (M)~2422~2820000~1,G-05~D1 (M)~5285~5333000~1,G-06~A1~2874~3009000~1,G-07~A1 (M)~2874~3009000~0,G-08~A1~2874~3009000~0,G-09~A1 (M)~2874~3009000~0,G-10~A1~2874~3009000~0,G-11~A1 (M)~2874~3009000~0,G-12~A1~2874~3009000~0,G-13~A1 (M)~2874~3009000~0,G-13A~A1~2874~3009000~0,G-15~E1~3713~3794000~1,G-16~E1 (M)~3713~3794000~0,G-17~A1 (M)~2874~2986000~1,G-18~A1~2874~2986000~1,G-19~A1 (M)~2874~2986000~1,G-20~A1~2874~2986000~0,G-21~A1 (M)~2874~2986000~0,G-22~A1~2874~2986000~0,G-23~A1 (M)~2874~2986000~0,G-23A~A1~2874~2986000~0,G-25~A1 (M)~2874~2986000~1,,,,,,"
 ];
 
-// Booking collected but not yet updated in the developer system (2026-11-11).
-// Remove each unit once the system shows it sold.
-const BOOKED = new Set(["L08-13A", "L08-23A", "L08-30", "L08-31"]);
-
 const floors = FLOORS.map(s => {
   const [floor, list] = s.split("|");
   const units = list.split(",").map(u => {
     if (!u) return null;
     const [no, layout, sqft, price, sold] = u.split("~");
-    return { no, layout, sqft: Number(sqft), price: Number(price), sold: sold === "1" || BOOKED.has(no) };
+    return { no, layout, sqft: Number(sqft), price: Number(price), sold: sold === "1" };
   });
   return { floor, units };
 });
