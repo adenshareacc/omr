@@ -785,8 +785,10 @@ function takeItems(text, re) {
   const got = [], rest = [];
   let into = rest;
   for (const line of text.split("\n")) {
-    if (!/^\s+[-*]/.test(line)) into = re.test(line) ? got : rest;
-    into.push(line);
+    if (/^\s+[-*]/.test(line)) { into.push(into === got ? line.replace(/^\s{2}/, "") : line); continue; }
+    into = re.test(line) ? got : rest;
+    // the item's own title becomes the section heading, so only its sub-points are kept
+    if (into === rest) rest.push(line);
   }
   return [got.join("\n"), rest.join("\n")];
 }
@@ -795,11 +797,15 @@ function customerSafe(text, p) {
   let skip = false;
   for (const line of String(text || "").split("\n")) {
     const sub = /^\s+[-*]/.test(line);
-    if (!sub) skip = PRIVATE_LINE.test(line) || line.replace(/[-*\s]/g, "") === p.name.replace(/\s/g, "");
+    if (!sub) skip = PRIVATE_LINE.test(line) || line.replace(/[-*\s]/g, "").toLowerCase() === p.name.replace(/\s/g, "").toLowerCase();
     if (!skip) out.push(line);
   }
   let s = out.join("\n");
-  [p.name, p.developer].filter(Boolean).forEach(w => { s = s.split(w).join(""); });
+  // Also the developer's brand word, e.g. "Armani" from "Armani Group".
+  const brand = String(p.developer || "").replace(/\b(group|sdn\.? bhd\.?|berhad|bhd|development|holdings?|properties|land)\b/gi, "").trim();
+  [p.name, p.developer, brand].filter(w => w && w.length > 2).forEach(w => {
+    s = s.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
+  });
   return s.trim();
 }
 
