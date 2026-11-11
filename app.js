@@ -836,66 +836,88 @@ async function viewProposal(slug) {
   const mapUrl = hasGeo(p) ? `https://www.google.com/maps?q=${p.lat},${p.lng}` : p.location_url;
   const pkg = customerSafe(T(p.package_md, p.package_md_en || p.package_md), p);
 
+  let sec = 0;
+  const kick = label => `<div class="pp-k">${String(++sec).padStart(2, "0")} · ${label}</div>`;
+  const title = [p.category, p.area].filter(Boolean).join(" @ ") || T("工业项目", "Industrial project");
+  const phone = fmtPhone(me.profile.phone), wa = String(me.profile.phone || "").replace(/\D/g, "").replace(/^0/, "60");
+  const dateText = T(`${today.slice(0, 4)} 年 ${+today.slice(5, 7)} 月 ${+today.slice(8)} 日`, today);
+  const qr = text => { if (!window.qrcode) return ""; const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); };
+  const key = (label, value, id) => value ? `<div><span>${label}</span><b contenteditable ${id ? `id="${id}"` : ""}>${e(value)}</b></div>` : "";
+
   render(`<div class="pp-bar noprint card">
       <a href="#/p/${encodeURIComponent(p.slug)}">← ${T("回到项目", "Back to project")}</a>
       <span class="small muted">${T("文字可以直接点进去改；不要的图片取消勾选；然后按右边的按钮，选「存成 PDF」。", "Click any text to edit it, untick pictures you don't want, then press the button and choose “Save as PDF”.")}</span>
       <button class="btn" id="print">${T("打印 / 存 PDF", "Print / Save PDF")}</button></div>
   <div class="pp">
     <section class="pp-page pp-cover">
-      <div class="pp-kicker" contenteditable>${e(T("项目推荐", "Property proposal"))}</div>
-      <h1 contenteditable>${e([p.category, p.area].filter(Boolean).join(" @ ") || T("工业项目", "Industrial project"))}</h1>
-      <div class="pp-loc" contenteditable>📍 ${e(p.area || "")}</div>
-      ${photos.length ? `<div class="pp-hero"><img src="${e(signed[photos[0].storage_path])}" alt="" id="hero-img"></div>
-        <div class="noprint small muted pp-ctl">${T("照片位置（拉动可以裁掉照片上的字）", "Photo position (drag to crop out any text on the photo)")}
+      ${photos.length ? `<div class="pp-hero"><img src="${e(signed[photos[0].storage_path])}" alt="" id="hero-img">
+        <div class="noprint small pp-ctl">${T("照片位置（拉动可以裁掉照片上的字）", "Photo position (drag to crop out text)")}
           <input type="range" id="hero-pos" min="0" max="100" value="50">
-          ${photos.length > 1 ? `<button class="btn ghost sm" id="hero-next">${T("换一张", "Next photo")}</button>` : ""}</div>` : ""}
-      <div class="pp-stats">
-        ${stat(T("价格", "Price"), sum.from_price && T(`${rm(sum.from_price)} 起`, `From ${rm(sum.from_price)}`))}
-        ${stat(T("建筑面积", "Built-up"), sum.bu_range && sum.bu_range + " sf")}
-        ${stat(T("土地面积", "Land area"), sum.land_range && sum.land_range + " sf")}
-        ${stat(T("电力", "Power"), specs.power)}
-        ${stat(T("承重", "Floor loading"), loadLabel(specs))}
-        ${stat(T("地契", "Tenure"), p.tenure)}
+          ${photos.length > 1 ? `<button class="btn ghost sm" id="hero-next">${T("换一张", "Next photo")}</button>` : ""}</div></div>` : ""}
+      <div class="pp-band">
+        <div class="pp-kicker" contenteditable>${T("投资建议书 · Proposal", "Investment proposal")}</div>
+        <h1 contenteditable>${e(title)}</h1>
+        <div class="pp-loc" contenteditable>${e([p.tenure, p.area].filter(Boolean).join(" · "))}</div>
+        <div class="pp-keys">
+          ${key(T("Nett 价", "Nett price"), sum.from_price && T(`${rm(sum.from_price)} 起`, `From ${rm(sum.from_price)}`))}
+          ${key(T("建筑面积", "Built-up"), sum.bu_range && sum.bu_range + " sf")}
+          ${key(T("每月供款 约", "Monthly from"), units.length ? "–" : "", "k_month")}
+        </div>
+        <div class="pp-by"><div><span>${T("编制人", "Prepared by")}</span><b contenteditable>${e(me.profile.name || "")}</b><span contenteditable>${T("产业顾问", "Property consultant")}</span></div>
+          <div class="r"><b class="gold" contenteditable>${e(phone)}</b><span>${e(dateText)}</span></div></div>
       </div>
     </section>
 
     <section class="pp-page">
-      ${usp ? `<h2>⭐ ${T("项目优势", "Why this project")}</h2><div class="md" contenteditable>${md(usp)}</div>` : ""}
-      <h2>${T("项目资料", "Project details")}</h2>
+      ${kick(T("项目", "Project"))}<h2 contenteditable>${usp ? T("项目优势", "Why this project") : T("项目资料", "Project details")}</h2>
+      <div class="pp-stats">
+        ${stat(T("地契", "Tenure"), p.tenure)}${stat(T("土地面积", "Land area"), sum.land_range && sum.land_range + " sf")}
+        ${stat(T("电力", "Power"), specs.power)}${stat(T("承重", "Floor loading"), loadLabel(specs))}
+      </div>
+      ${usp ? `<div class="md" contenteditable>${md(usp)}</div><h3>${T("项目资料", "Project details")}</h3>` : ""}
       <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
-      ${units.length ? `<h2>${T("单位与价格", "Units & prices")}</h2>
+      ${units.length ? `<h3>${T("单位与价格", "Units & prices")}</h3>
       <table class="pp-table"><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
         ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td>${hasLand ? `<td class="num">${num(u.land_sf)}</td>` : ""}<td class="num">${num(u.bu_sf)}</td>
-          <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
+          <td class="num">${rm(u.spa_price)}</td><td class="num"><b>${rm(u.nett_price)}</b></td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
     </section>
 
     ${pkg || units.length ? `<section class="pp-page">
-      ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
-      ${units.length ? `<h2>🧮 ${T("每月供款估算", "Monthly instalment estimate")}</h2>
-      <div class="noprint pp-loan-in small">
+      ${kick(T("价格与供款", "Price & instalment"))}<h2 contenteditable>${T("配套与每月供款", "Package & monthly instalment")}</h2>
+      ${pkg ? `<div class="pp-card"><h3>🎁 ${T("配套优惠", "Package")}</h3><div class="md" contenteditable>${md(pkg)}</div></div>` : ""}
+      ${units.length ? `<div class="noprint pp-loan-in small">
         <label>Loan %<input id="l_m" inputmode="decimal" value="90"></label>
         <label>${T("利率 %", "Interest %")}<input id="l_r" inputmode="decimal" value="3.8"></label>
         <label>${T("年限", "Years")}<input id="l_y" inputmode="decimal" value="25"></label></div>
-      <table class="pp-table"><thead><tr><th>Type</th><th class="num">Nett</th><th class="num">Loan</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th></tr></thead>
+      <table class="pp-table pp-loan"><thead><tr><th>Type</th><th class="num">Nett</th><th class="num">Loan</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th></tr></thead>
         <tbody id="l_rows"></tbody></table>
       <p class="small muted" id="l_note"></p>` : ""}</section>` : ""}
 
-    ${mapUrl ? `<section class="pp-page"><h2>📍 ${T("位置与交通", "Location & access")}</h2>
+    ${mapUrl ? `<section class="pp-page">
+      ${kick(T("地点", "Location"))}<h2 contenteditable>${T("位置与交通", "Location & access")}</h2>
       ${access ? `<div class="md" contenteditable>${md(access)}</div>` : ""}
       ${hasGeo(p) && window.L ? `<figure class="pp-fig"><div class="pp-map" id="pp-map"></div>
         <label class="noprint small"><input type="checkbox" checked> ${T("放进 PDF", "Include")}</label></figure>` : ""}
-      <p>Google Maps：<a href="${e(mapUrl)}">${e(mapUrl)}</a></p></section>` : ""}
+      <div class="pp-card pp-qr">${qr(mapUrl)}<div><b>Google Maps ${T("位置", "location")}</b>
+        <a href="${e(mapUrl)}">${e(mapUrl.replace(/^https:\/\/(www\.)?/, ""))}</a>
+        <span class="small muted">${T("扫描二维码或点击链接，即可打开地图导航。", "Scan the code or tap the link to open directions.")}</span></div></div></section>` : ""}
 
-    ${masters.length ? `<section class="pp-page"><h2>${T("总体规划", "Master plan")}</h2>
+    ${masters.length ? `<section class="pp-page">${kick(T("总体规划", "Master plan"))}<h2 contenteditable>${T("总体规划", "Master plan")}</h2>
       <div class="pp-figs">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
-    ${layouts.length ? `<section class="pp-page"><h2>${T("平面图", "Floor plans")}</h2>
+    ${layouts.length ? `<section class="pp-page">${kick(T("平面图", "Floor plans"))}<h2 contenteditable>${T("平面图", "Floor plans")}</h2>
       <div class="pp-figs pp-plans">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
 
-    <footer class="pp-foot">
-      <div><b contenteditable>${e(me.profile.name || "")}</b><br><span contenteditable>WhatsApp ${e(fmtPhone(me.profile.phone))}</span></div>
-      <div class="small muted" contenteditable>${T(`价格与配套以发展商最新资料为准 · ${today}`, `Prices and packages are subject to the developer's latest terms · ${today}`)}</div>
-    </footer>
-  </div>`);
+    <section class="pp-contact">
+      <div><span>${T("您的产业顾问", "Your property consultant")}</span><b class="nm" contenteditable>${e(me.profile.name || "")}</b>
+        <b class="gold" contenteditable>${e(phone)}</b>
+        ${wa ? `<span>WhatsApp：<a href="https://wa.me/${wa}">wa.me/${wa}</a></span>` : ""}</div>
+      ${wa ? `<div class="pp-qrbox">${qr(`https://wa.me/${wa}`)}</div>` : ""}
+    </section>
+    <p class="small muted pp-disc" contenteditable>${T(`价格、配套与供款仅供参考，以发展商与银行最新资料为准 · ${dateText}`, `Prices, packages and instalments are for reference only and subject to the developer's and bank's latest terms · ${dateText}`)}</p>
+  </div>
+  <style>@page { @bottom-left { content: "${title.replace(/["\\]/g, "")}"; font-size: 8pt; color: #23205a; }
+    @bottom-right { content: "${`${me.profile.name || ""} · ${phone}`.replace(/["\\]/g, "")}"; font-size: 8pt; color: #666; } }
+    @page :first { margin: 0; @bottom-left { content: none; } @bottom-right { content: none; } }</style>`);
 
   document.querySelectorAll(".pp-fig input").forEach(box => box.onchange = () => box.closest("figure").classList.toggle("off", !box.checked));
   const img = $("#hero-img");
@@ -911,6 +933,8 @@ async function viewProposal(slug) {
       const monthly = n ? (r ? amt * r / (1 - Math.pow(1 + r, -n)) : amt / n) : 0;
       return `<tr><td>${e(u.name)}</td><td class="num">${rm(price)}</td><td class="num">${rm(amt)}</td><td class="num">${rm(price - amt)}</td><td class="num"><b>${rm(monthly)}</b></td></tr>`;
     }).join("");
+    const low = Math.min(...units.map(u => +(u.nett_price || u.spa_price))) * m / 100;
+    $("#k_month").textContent = n ? rm(r ? low * r / (1 - Math.pow(1 + r, -n)) : low / n) : "–";
     $("#l_note").textContent = T(`按 Nett 价 ${m}% loan、利率 ${+$("#l_r").value}%、${+$("#l_y").value} 年计算，只供参考；实际以银行批准为准。`,
       `Based on a ${m}% loan on the nett price, ${+$("#l_r").value}% interest, ${+$("#l_y").value} years. For reference only; subject to bank approval.`);
   };
