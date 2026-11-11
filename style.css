@@ -274,7 +274,7 @@ body.proj main.wrap { max-width: 1320px; }
 .pp-loan-in { display: flex; gap: 12px; margin-bottom: 12px; }
 .pp-loan-in input { width: 80px; margin-left: 6px; }
 .pp-qr { display: flex; gap: 20px; align-items: center; margin-top: 16px; }
-.pp-qr svg, .pp-qrbox svg { width: 110px; height: 110px; flex: none; display: block; }
+.pp .qr { width: 110px; height: 110px; flex: none; display: block; image-rendering: pixelated; }
 .pp-qr b { display: block; color: var(--pn); font-size: 16px; }
 .pp-qr a { display: block; color: var(--pk); font-weight: 700; margin: 4px 0; word-break: break-all; }
 .pp-map { width: 100%; height: 380px; }
@@ -296,9 +296,9 @@ body.proj main.wrap { max-width: 1320px; }
 .pp-qrbox { background: #fff; padding: 10px; border-radius: 12px; }
 .pp-disc { padding: 0 44px 30px; }
 .pp [contenteditable]:hover { outline: 1px dashed var(--pg); }
-@media (max-width: 600px) {
-  .pp-page, .pp-band { padding: 22px 16px; } .pp-keys { grid-template-columns: 1fr; } .pp-band h1 { font-size: 26px; }
-  .pp-table { font-size: 12px; } .pp-contact { margin: 16px; flex-direction: column; align-items: flex-start; } .pp-disc { padding: 0 16px 20px; }
+@media (max-width: 600px) {  /* not while making the PDF, which keeps the A4 layout on phones too */
+  body:not(.pdfmake) :is(.pp-page, .pp-band) { padding: 22px 16px; } body:not(.pdfmake) .pp-keys { grid-template-columns: 1fr; } body:not(.pdfmake) .pp-band h1 { font-size: 26px; }
+  body:not(.pdfmake) .pp-table { font-size: 12px; } body:not(.pdfmake) .pp-contact { margin: 16px; flex-direction: column; align-items: flex-start; } body:not(.pdfmake) .pp-disc { padding: 0 16px 20px; }
 }
 /* PDF button (makePdf): the same look as print, laid out at A4 width (182 mm content = 688 px) */
 body.pdfmake .noprint, body.pdfmake .pp-fig.off { display: none !important; }
@@ -307,6 +307,11 @@ body.pdfmake .pp-cover { width: 794px; height: 1120px;  /* just under one A4 pag
 body.pdfmake .pp-cover .pp-hero { aspect-ratio: auto; flex: 0 0 624px; }
 body.pdfmake .pp-cover .pp-band { flex: 1; padding: 45px 60px; display: flex; flex-direction: column; }
 body.pdfmake .pp-cover .pp-by { margin-top: auto; }
+/* html2pdf keeps a picture whole by pushing it down with a spacer, which only works outside CSS grid */
+body.pdfmake .pp-figs { display: block; }
+body.pdfmake .pp-figs .pp-fig { margin-bottom: 16px; }
+body.pdfmake .pp-shots .pp-fig { display: inline-block; vertical-align: top; width: calc(50% - 8px); margin: 0 4px 16px; }
+body.pdfmake .pp-shots .pp-fig.wide { width: calc(100% - 8px); }
 body.pdfmake .pp-shots .pp-fig img { max-height: 219px; }
 body.pdfmake .pp-shots .pp-fig.wide img { max-height: 340px; }
 body.pdfmake .pp-plans .pp-fig img { max-height: 397px; }

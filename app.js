@@ -848,7 +848,7 @@ async function viewProposal(slug) {
   const title = [p.category, p.area].filter(Boolean).join(" @ ") || T("工业项目", "Industrial project");
   const phone = fmtPhone(me.profile.phone), wa = String(me.profile.phone || "").replace(/\D/g, "").replace(/^0/, "60");
   const dateText = T(`${today.slice(0, 4)} 年 ${+today.slice(5, 7)} 月 ${+today.slice(8)} 日`, today);
-  const qr = text => { if (!window.qrcode) return ""; const q = qrcode(0, "M"); q.addData(text); q.make(); return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); };
+  const qr = text => { if (!window.qrcode) return ""; const q = qrcode(0, "M"); q.addData(text); q.make(); return `<img class="qr" src="${q.createDataURL(8, 0)}" alt="QR">`; };
   const key = (label, value, id) => value ? `<div><span>${label}</span><b contenteditable ${id ? `id="${id}"` : ""}>${e(value)}</b></div>` : "";
 
   render(`<div class="pp-bar noprint card">
@@ -987,12 +987,13 @@ async function makePdf(name, footLeft, footRight) {
     s.onload = ok; s.onerror = () => bad(new Error("html2pdf")); document.head.append(s);
   });
   const W = 182, H = 267, M = 14;  // A4 content box in mm
-  // windowWidth keeps phone layouts (narrow-screen CSS) out of the PDF.
-  const opt = (w, h) => ({ margin: 0, jsPDF: { unit: "mm", format: [w, h] }, html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 },
+  const opt = (w, h) => ({ margin: 0, jsPDF: { unit: "mm", format: [w, h] }, html2canvas: { scale: 2, useCORS: true },
     pagebreak: { mode: "css", avoid: [".pp-fig", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
   document.body.classList.add("pdfmake");
   try {
-    const pdf = await html2pdf().set(opt(210, 297)).from($(".pp-cover")).toPdf().get("pdf");
+    // html2pdf renders a copy of one part; the copy sits in a .pp box so the proposal's styles still apply.
+    const box = el => { const w = document.createElement("div"); w.className = "pp"; w.append(el.cloneNode(true)); return w; };
+    const pdf = await html2pdf().set(opt(210, 297)).from(box($(".pp-cover"))).toPdf().get("pdf");
     let y = H;  // used mm on the current page; H = full
     const put = (canvas, fresh) => {
       const px = canvas.width / W, page = Math.floor(H * px);
@@ -1007,7 +1008,7 @@ async function makePdf(name, footLeft, footRight) {
       }
     };
     const parts = [...document.querySelectorAll(".pp > .pp-page:not(.pp-cover), .pp > .pp-contact, .pp > .pp-disc")];
-    for (const el of parts) put(await html2pdf().set(opt(W, H)).from(el).toCanvas().get("canvas"), el.classList.contains("pp-page"));
+    for (const el of parts) put(await html2pdf().set(opt(W, H)).from(box(el)).toCanvas().get("canvas"), el.classList.contains("pp-page"));
     // Running footer drawn as a picture so Chinese titles need no PDF font.
     const f = document.createElement("canvas"), g = f.getContext("2d");
     f.width = 2000; f.height = 44; g.font = "28px system-ui, sans-serif";
