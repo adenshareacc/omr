@@ -867,29 +867,29 @@ async function viewProposal(slug) {
       <table class="pp-table"><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
         ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td>${hasLand ? `<td class="num">${num(u.land_sf)}</td>` : ""}<td class="num">${num(u.bu_sf)}</td>
           <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
-      ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
     </section>
 
-    ${units.length ? `<section class="pp-page"><h2>🧮 ${T("每月供款估算", "Monthly instalment estimate")}</h2>
+    ${pkg || units.length ? `<section class="pp-page">
+      ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
+      ${units.length ? `<h2>🧮 ${T("每月供款估算", "Monthly instalment estimate")}</h2>
       <div class="noprint pp-loan-in small">
         <label>Loan %<input id="l_m" inputmode="decimal" value="90"></label>
         <label>${T("利率 %", "Interest %")}<input id="l_r" inputmode="decimal" value="3.8"></label>
         <label>${T("年限", "Years")}<input id="l_y" inputmode="decimal" value="25"></label></div>
       <table class="pp-table"><thead><tr><th>Type</th><th class="num">Nett</th><th class="num">Loan</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th></tr></thead>
         <tbody id="l_rows"></tbody></table>
-      <p class="small muted" id="l_note"></p></section>` : ""}
+      <p class="small muted" id="l_note"></p>` : ""}</section>` : ""}
 
     ${mapUrl ? `<section class="pp-page"><h2>📍 ${T("位置与交通", "Location & access")}</h2>
       ${access ? `<div class="md" contenteditable>${md(access)}</div>` : ""}
-      ${hasGeo(p) ? `<figure class="pp-fig"><iframe class="pp-map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
-          src="https://maps.google.com/maps?q=${p.lat},${p.lng}&z=14&output=embed"></iframe>
+      ${hasGeo(p) && window.L ? `<figure class="pp-fig"><div class="pp-map" id="pp-map"></div>
         <label class="noprint small"><input type="checkbox" checked> ${T("放进 PDF", "Include")}</label></figure>` : ""}
       <p>Google Maps：<a href="${e(mapUrl)}">${e(mapUrl)}</a></p></section>` : ""}
 
     ${masters.length ? `<section class="pp-page"><h2>${T("总体规划", "Master plan")}</h2>
       <div class="pp-figs">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
     ${layouts.length ? `<section class="pp-page"><h2>${T("平面图", "Floor plans")}</h2>
-      <div class="pp-figs">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
+      <div class="pp-figs pp-plans">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
 
     <footer class="pp-foot">
       <div><b contenteditable>${e(me.profile.name || "")}</b><br><span contenteditable>WhatsApp ${e(fmtPhone(me.profile.phone))}</span></div>
@@ -914,6 +914,12 @@ async function viewProposal(slug) {
     $("#l_note").textContent = T(`按 Nett 价 ${m}% loan、利率 ${+$("#l_r").value}%、${+$("#l_y").value} 年计算，只供参考；实际以银行批准为准。`,
       `Based on a ${m}% loan on the nett price, ${+$("#l_r").value}% interest, ${+$("#l_y").value} years. For reference only; subject to bank approval.`);
   };
+  if ($("#pp-map")) {
+    // Google's embed is an iframe that prints blank, so the proposal uses the same OpenStreetMap tiles as the projects map.
+    const map = L.map("pp-map", { zoomControl: false, scrollWheelZoom: false }).setView([p.lat, p.lng], 14);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(map);
+    L.marker([p.lat, p.lng], { icon: pinIcon(true, false) }).addTo(map);
+  }
   if ($("#l_rows")) { document.querySelectorAll(".pp-loan-in input").forEach(i => i.oninput = loan); loan(); }
   $("#print").onclick = () => window.print();
 }
