@@ -148,7 +148,8 @@ const compareLabel = on => on ? T("✓ 已加入对比", "✓ In compare") : T("
 // 011-391 93190 style, as agents write it in WhatsApp.
 function fmtPhone(ph) {
   const d = String(ph || "").replace(/\D/g, "").replace(/^60/, "0");
-  return d.length >= 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)} ${d.slice(6)}` : String(ph || "");
+  // 11 digits (011-xxxx xxxx) split 3-4-4, 10 digits 3-3-4
+  return d.length === 11 ? `${d.slice(0, 3)}-${d.slice(3, 7)} ${d.slice(7)}` : d.length >= 10 ? `${d.slice(0, 3)}-${d.slice(3, 6)} ${d.slice(6)}` : String(ph || "");
 }
 
 // The stored template ends at the ✅ lines; add the map link and the sending agent's own contact.
