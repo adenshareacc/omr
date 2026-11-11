@@ -90,6 +90,13 @@
   .legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .legend b { width: 16px; height: 16px; display: inline-block; border: 1px solid #999; }
 
+  .preview-btn {
+    margin-left: auto; height: 28px; padding: 0 14px; border: 1px solid #5a6070; border-radius: 2px;
+    background: transparent; color: #d8dbe2; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .preview-btn.on { background: #ffe58f; border-color: #ffe58f; color: #7a5200; }
+  .preview-btn + .updated { margin-left: 0; }
+  .preview-bar[hidden] { display: none; }
   .preview-bar { flex: none; background: #ffe58f; color: #7a5200; text-align: center; font-size: 14px; padding: 6px 16px; }
 
   /* unit detail side panel */
@@ -256,16 +263,40 @@ function closePanel() {
   panel.classList.remove("open"); mask.classList.remove("open");
   if (picked) { picked.classList.remove("picked"); picked = null; }
 }
-// Preview mode (?preview in the URL): click a unit to flip Available/Sold on this screen only.
-// Nothing is saved; a refresh brings back the real data.
-const PREVIEW = new URLSearchParams(location.search).has("preview");
-if (PREVIEW) {
-  const bar = document.createElement("div");
-  bar.className = "preview-bar";
-  bar.textContent = "PREVIEW — not real data. Click a unit to switch Available / Sold. Changes are not saved.";
-  document.body.prepend(bar);
-  document.title = "PREVIEW · " + document.title;
+// Preview button (only on the agent link, ?preview in the URL).
+// While on: click a unit to flip Available/Sold on this screen only. Turning it off
+// puts every unit back to the system status. Nothing is saved.
+const PREVIEW_LINK = new URLSearchParams(location.search).has("preview");
+let previewOn = false;
+const previewBar = document.createElement("div");
+previewBar.className = "preview-bar";
+previewBar.textContent = "PREVIEW — not real data. Click a unit to switch Available / Sold. Turn Preview off to go back to the system status.";
+previewBar.hidden = true;
+document.body.prepend(previewBar);
+document.querySelectorAll(".room").forEach(el => { el.dataset.real = el.classList.contains("sold") ? "1" : "0"; });
+
+function setPreview(on) {
+  previewOn = on;
+  previewBar.hidden = !on;
+  previewBtn.classList.toggle("on", on);
+  previewBtn.textContent = on ? "Preview: ON" : "Preview: OFF";
+  document.title = (on ? "PREVIEW · " : "") + "Sales Booking · The Nex";
+  closePanel();
+  if (!on) {
+    document.querySelectorAll(".room").forEach(el => {
+      const sold = el.dataset.real === "1";
+      el.classList.toggle("sold", sold);
+      el.title = `${el.dataset.no} · ${sold ? "Sold" : "Available"}`;
+    });
+    updateSummary();
+  }
 }
+const previewBtn = document.createElement("button");
+previewBtn.className = "preview-btn";
+previewBtn.textContent = "Preview: OFF";
+previewBtn.addEventListener("click", () => setPreview(!previewOn));
+if (PREVIEW_LINK) document.getElementById("updated").before(previewBtn);
+
 function updateSummary() {
   const all = document.querySelectorAll(".room");
   const free = [...all].filter(el => !el.classList.contains("sold")).length;
@@ -275,7 +306,7 @@ function updateSummary() {
 document.getElementById("board").addEventListener("click", e => {
   const el = e.target.closest(".room");
   if (!el) return;
-  if (PREVIEW) {
+  if (previewOn) {
     el.classList.toggle("sold");
     el.title = `${el.dataset.no} · ${el.classList.contains("sold") ? "Sold" : "Available"}`;
     updateSummary();
