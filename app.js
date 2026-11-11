@@ -988,7 +988,8 @@ async function makePdf(name, footLeft, footRight) {
   });
   const W = 182, H = 267, M = 14;  // A4 content box in mm
   const opt = (w, h) => ({ margin: 0, jsPDF: { unit: "mm", format: [w, h] }, html2canvas: { scale: 2, useCORS: true },
-    pagebreak: { mode: "css", avoid: [".pp-fig", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
+    // Two photos share a row, so only the left one is pushed to the next page and the right one follows it.
+    pagebreak: { mode: "css", avoid: [".pp-figs:not(.pp-shots) > .pp-fig", ".pp-shots > .pp-fig:nth-child(odd)", ".pp-fig.wide", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
   document.body.classList.add("pdfmake");
   try {
     // html2pdf renders a copy of one part; the copy sits in a .pp box so the proposal's styles still apply.
