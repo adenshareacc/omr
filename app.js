@@ -778,7 +778,18 @@ async function viewProject(slug) {
 }
 
 // Info lines a customer must not see (they would reveal the project, or are agent-only); their sub-bullets go too.
-const PRIVATE_LINE = /发展商|Developer|地址|Address|PIC|login|登入|登录|密码|password|价格|Price|可售|Available|Unit \d|Lot \d|\*\*电 \/ 承重|\*\*Power \/ floor|\*\*尺寸|\*\*Size \(W|commission|佣金|bank|银行/i;
+const PRIVATE_LINE = /发展商|Developer|地址|Address|PIC|login|登入|登录|密码|password|价格|Price|可售|Available|Unit \d|Lot \d|\*\*电 \/ 承重|\*\*Power \/ floor|\*\*尺寸|\*\*Size \(W|commission|佣金|bank|银行|Sdn Bhd|CN 分配|CN allocation/i;
+// Top-level info items shown in their own proposal sections instead of the highlights.
+const USP_ITEM = /^[-*]\s*\*\*(优势|USP|特点|Features)/i, ACCESS_ITEM = /^[-*]\s*\*\*(交通|Access)/i;
+function takeItems(text, re) {
+  const got = [], rest = [];
+  let into = rest;
+  for (const line of text.split("\n")) {
+    if (!/^\s+[-*]/.test(line)) into = re.test(line) ? got : rest;
+    into.push(line);
+  }
+  return [got.join("\n"), rest.join("\n")];
+}
 function customerSafe(text, p) {
   const out = [];
   let skip = false;
@@ -814,7 +825,9 @@ async function viewProposal(slug) {
     <label class="noprint small"><input type="checkbox" ${on ? "checked" : ""}> ${T("放进 PDF", "Include")}</label></figure>`;
   const stat = (label, value) => value ? `<div><span>${label}</span><b contenteditable>${e(value)}</b></div>` : "";
   const today = new Date().toISOString().slice(0, 10);
-  const info = customerSafe(T(p.info_md, p.info_md_en || p.info_md), p);
+  const [access, info0] = takeItems(customerSafe(T(p.info_md, p.info_md_en || p.info_md), p), ACCESS_ITEM);
+  const [usp, info] = takeItems(info0, USP_ITEM);
+  const mapUrl = hasGeo(p) ? `https://www.google.com/maps?q=${p.lat},${p.lng}` : p.location_url;
   const pkg = customerSafe(T(p.package_md, p.package_md_en || p.package_md), p);
 
   render(`<div class="pp-bar noprint card">
@@ -841,7 +854,8 @@ async function viewProposal(slug) {
     </section>
 
     <section class="pp-page">
-      <h2>${T("项目亮点", "Highlights")}</h2>
+      ${usp ? `<h2>⭐ ${T("项目优势", "Why this project")}</h2><div class="md" contenteditable>${md(usp)}</div>` : ""}
+      <h2>${T("项目资料", "Project details")}</h2>
       <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
       ${units.length ? `<h2>${T("单位与价格", "Units & prices")}</h2>
       <table class="pp-table"><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
@@ -849,6 +863,22 @@ async function viewProposal(slug) {
           <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
       ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
     </section>
+
+    ${units.length ? `<section class="pp-page"><h2>🧮 ${T("每月供款估算", "Monthly instalment estimate")}</h2>
+      <div class="noprint pp-loan-in small">
+        <label>Loan %<input id="l_m" inputmode="decimal" value="90"></label>
+        <label>${T("利率 %", "Interest %")}<input id="l_r" inputmode="decimal" value="3.8"></label>
+        <label>${T("年限", "Years")}<input id="l_y" inputmode="decimal" value="25"></label></div>
+      <table class="pp-table"><thead><tr><th>Type</th><th class="num">Nett</th><th class="num">Loan</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th></tr></thead>
+        <tbody id="l_rows"></tbody></table>
+      <p class="small muted" id="l_note"></p></section>` : ""}
+
+    ${mapUrl ? `<section class="pp-page"><h2>📍 ${T("位置与交通", "Location & access")}</h2>
+      ${access ? `<div class="md" contenteditable>${md(access)}</div>` : ""}
+      ${hasGeo(p) ? `<figure class="pp-fig"><iframe class="pp-map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+          src="https://maps.google.com/maps?q=${p.lat},${p.lng}&z=14&output=embed"></iframe>
+        <label class="noprint small"><input type="checkbox" checked> ${T("放进 PDF", "Include")}</label></figure>` : ""}
+      <p>Google Maps：<a href="${e(mapUrl)}">${e(mapUrl)}</a></p></section>` : ""}
 
     ${masters.length ? `<section class="pp-page"><h2>${T("总体规划", "Master plan")}</h2>
       <div class="pp-figs">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
@@ -868,6 +898,17 @@ async function viewProposal(slug) {
     $("#hero-pos").oninput = ev => { img.style.objectPosition = `50% ${ev.target.value}%`; };
     if ($("#hero-next")) $("#hero-next").onclick = () => { i = (i + 1) % photos.length; img.src = signed[photos[i].storage_path]; };
   }
+  const loan = () => {
+    const m = +$("#l_m").value || 0, r = (+$("#l_r").value || 0) / 1200, n = (+$("#l_y").value || 0) * 12;
+    $("#l_rows").innerHTML = units.map(u => {
+      const price = +(u.nett_price || u.spa_price), amt = price * m / 100;
+      const monthly = n ? (r ? amt * r / (1 - Math.pow(1 + r, -n)) : amt / n) : 0;
+      return `<tr><td>${e(u.name)}</td><td class="num">${rm(price)}</td><td class="num">${rm(amt)}</td><td class="num">${rm(price - amt)}</td><td class="num"><b>${rm(monthly)}</b></td></tr>`;
+    }).join("");
+    $("#l_note").textContent = T(`按 Nett 价 ${m}% loan、利率 ${+$("#l_r").value}%、${+$("#l_y").value} 年计算，只供参考；实际以银行批准为准。`,
+      `Based on a ${m}% loan on the nett price, ${+$("#l_r").value}% interest, ${+$("#l_y").value} years. For reference only; subject to bank approval.`);
+  };
+  if ($("#l_rows")) { document.querySelectorAll(".pp-loan-in input").forEach(i => i.oninput = loan); loan(); }
   $("#print").onclick = () => window.print();
 }
 
