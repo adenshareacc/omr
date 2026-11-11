@@ -304,6 +304,7 @@ body.proj main.wrap { max-width: 1320px; }
   .pp { max-width: none; }
   .pp * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .pp-page { padding: 0; border: 0; break-after: page; }
+  .pp-page:last-of-type { break-after: auto; margin-bottom: 8mm; }
   .pp-page h2, .pp-page h3 { break-after: avoid; }
   .pp-cover { height: 297mm; display: flex; flex-direction: column; }
   .pp-cover .pp-hero { aspect-ratio: auto; flex: 0 0 165mm; }

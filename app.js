@@ -876,20 +876,16 @@ async function viewProposal(slug) {
       </div>
       ${usp ? `<div class="md" contenteditable>${md(usp)}</div><h3>${T("项目资料", "Project details")}</h3>` : ""}
       <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
-      ${units.length ? `<h3>${T("单位与价格", "Units & prices")}</h3>
-      <table class="pp-table"><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
-        ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td>${hasLand ? `<td class="num">${num(u.land_sf)}</td>` : ""}<td class="num">${num(u.bu_sf)}</td>
-          <td class="num">${rm(u.spa_price)}</td><td class="num"><b>${rm(u.nett_price)}</b></td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
     </section>
 
     ${pkg || units.length ? `<section class="pp-page">
-      ${kick(T("价格与供款", "Price & instalment"))}<h2 contenteditable>${T("配套与每月供款", "Package & monthly instalment")}</h2>
+      ${kick(T("价格与供款", "Price & instalment"))}<h2 contenteditable>${T("价格、配套与每月供款", "Prices, package & monthly instalment")}</h2>
       ${pkg ? `<div class="pp-card"><h3>🎁 ${T("配套优惠", "Package")}</h3><div class="md" contenteditable>${md(pkg)}</div></div>` : ""}
       ${units.length ? `<div class="noprint pp-loan-in small">
         <label>Loan %<input id="l_m" inputmode="decimal" value="90"></label>
         <label>${T("利率 %", "Interest %")}<input id="l_r" inputmode="decimal" value="3.8"></label>
         <label>${T("年限", "Years")}<input id="l_y" inputmode="decimal" value="25"></label></div>
-      <table class="pp-table pp-loan"><thead><tr><th>Type</th><th class="num">Nett</th><th class="num">Loan</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th></tr></thead>
+      <table class="pp-table pp-loan"><thead><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th class="num">${T("首期", "Downpayment")}</th><th class="num">${T("每月供款", "Monthly")}</th><th>${T("剩余", "Left")}</th></tr></thead>
         <tbody id="l_rows"></tbody></table>
       <p class="small muted" id="l_note"></p>` : ""}</section>` : ""}
 
@@ -907,12 +903,12 @@ async function viewProposal(slug) {
     ${layouts.length ? `<section class="pp-page">${kick(T("平面图", "Floor plans"))}<h2 contenteditable>${T("平面图", "Floor plans")}</h2>
       <div class="pp-figs pp-plans">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
 
-    <section class="pp-contact">
+    <div class="pp-contact">
       <div><span>${T("您的产业顾问", "Your property consultant")}</span><b class="nm" contenteditable>${e(me.profile.name || "")}</b>
         <b class="gold" contenteditable>${e(phone)}</b>
         ${wa ? `<span>WhatsApp：<a href="https://wa.me/${wa}">wa.me/${wa}</a></span>` : ""}</div>
       ${wa ? `<div class="pp-qrbox">${qr(`https://wa.me/${wa}`)}</div>` : ""}
-    </section>
+    </div>
     <p class="small muted pp-disc" contenteditable>${T(`价格、配套与供款仅供参考，以发展商与银行最新资料为准 · ${dateText}`, `Prices, packages and instalments are for reference only and subject to the developer's and bank's latest terms · ${dateText}`)}</p>
   </div>
   <style>@page { @bottom-left { content: "${title.replace(/["\\]/g, "")}"; font-size: 8pt; color: #23205a; }
@@ -931,12 +927,13 @@ async function viewProposal(slug) {
     $("#l_rows").innerHTML = units.map(u => {
       const price = +(u.nett_price || u.spa_price), amt = price * m / 100;
       const monthly = n ? (r ? amt * r / (1 - Math.pow(1 + r, -n)) : amt / n) : 0;
-      return `<tr><td>${e(u.name)}</td><td class="num">${rm(price)}</td><td class="num">${rm(amt)}</td><td class="num">${rm(price - amt)}</td><td class="num"><b>${rm(monthly)}</b></td></tr>`;
+      return `<tr><td>${e(u.name)}</td>${hasLand ? `<td class="num">${num(u.land_sf)}</td>` : ""}<td class="num">${num(u.bu_sf)}</td><td class="num">${rm(u.spa_price)}</td><td class="num"><b>${rm(u.nett_price)}</b></td>
+        <td class="num">${rm(price - amt)}</td><td class="num"><b>${rm(monthly)}</b></td><td>${e(u.available)}</td></tr>`;
     }).join("");
     const low = Math.min(...units.map(u => +(u.nett_price || u.spa_price))) * m / 100;
     $("#k_month").textContent = n ? rm(r ? low * r / (1 - Math.pow(1 + r, -n)) : low / n) : "–";
-    $("#l_note").textContent = T(`按 Nett 价 ${m}% loan、利率 ${+$("#l_r").value}%、${+$("#l_y").value} 年计算，只供参考；实际以银行批准为准。`,
-      `Based on a ${m}% loan on the nett price, ${+$("#l_r").value}% interest, ${+$("#l_y").value} years. For reference only; subject to bank approval.`);
+    $("#l_note").textContent = T(`首期与供款按 Nett 价 ${m}% loan、利率 ${+$("#l_r").value}%、${+$("#l_y").value} 年计算，只供参考；实际以银行批准为准。`,
+      `Downpayment and instalment based on a ${m}% loan on the nett price, ${+$("#l_r").value}% interest, ${+$("#l_y").value} years. For reference only; subject to bank approval.`);
   };
   if ($("#pp-map")) {
     // Google's embed is an iframe that prints blank, so the proposal uses the same OpenStreetMap tiles as the projects map.
