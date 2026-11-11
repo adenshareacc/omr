@@ -808,7 +808,7 @@ async function viewProposal(slug) {
   const plans = stored.filter(f => f.doc_type === PLAN && f.unit_type);
   const masters = plans.filter(isMaster), layouts = plans.filter(f => !isMaster(f));
   const selling = name => units.some(u => baseType(u.name) === baseType(name) && !/^0\b/.test(u.available || ""));
-  const sum = unitSummary(units), specs = parseSpecs(p.info_md);
+  const sum = unitSummary(units), specs = parseSpecs(p.info_md), hasLand = units.some(u => u.land_sf);
   const fig = (f, on) => `<figure class="pp-fig${on ? "" : " off"}"><img src="${e(signed[f.storage_path])}" alt="">
     <figcaption contenteditable>${e(isMaster(f) ? "Master Plan" : f.unit_type)}</figcaption>
     <label class="noprint small"><input type="checkbox" ${on ? "checked" : ""}> ${T("放进 PDF", "Include")}</label></figure>`;
@@ -844,14 +844,14 @@ async function viewProposal(slug) {
       <h2>${T("项目亮点", "Highlights")}</h2>
       <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
       ${units.length ? `<h2>${T("单位与价格", "Units & prices")}</h2>
-      <table class="pp-table"><tr><th>Type</th><th class="num">Land sf</th><th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
-        ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td><td class="num">${num(u.land_sf)}</td><td class="num">${num(u.bu_sf)}</td>
+      <table class="pp-table"><tr><th>Type</th>${hasLand ? `<th class="num">Land sf</th>` : ""}<th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
+        ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td>${hasLand ? `<td class="num">${num(u.land_sf)}</td>` : ""}<td class="num">${num(u.bu_sf)}</td>
           <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
       ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
     </section>
 
     ${masters.length ? `<section class="pp-page"><h2>${T("总体规划", "Master plan")}</h2>
-      <div class="pp-figs one">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
+      <div class="pp-figs">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
     ${layouts.length ? `<section class="pp-page"><h2>${T("平面图", "Floor plans")}</h2>
       <div class="pp-figs">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
 
