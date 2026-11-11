@@ -988,12 +988,24 @@ async function makePdf(name, footLeft, footRight) {
   });
   const W = 182, H = 267, M = 14;  // A4 content box in mm
   const opt = (w, h) => ({ margin: 0, jsPDF: { unit: "mm", format: [w, h] }, html2canvas: { scale: 2, useCORS: true },
-    // Two photos share a row, so only the left one is pushed to the next page and the right one follows it.
-    pagebreak: { mode: "css", avoid: [".pp-figs:not(.pp-shots) > .pp-fig", ".pp-shots > .pp-fig:nth-child(odd)", ".pp-fig.wide", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
+    pagebreak: { mode: "css", avoid: [".pp-fig", ".pp-row", "tr", ".pp-card", ".pp-stats", ".pp-keys", "li", "p"] } });
   document.body.classList.add("pdfmake");
   try {
     // html2pdf renders a copy of one part; the copy sits in a .pp box so the proposal's styles still apply.
-    const box = el => { const w = document.createElement("div"); w.className = "pp"; w.append(el.cloneNode(true)); return w; };
+    const box = el => {
+      const w = document.createElement("div"); w.className = "pp"; w.append(el.cloneNode(true));
+      // Photos go in rows of two (wide ones alone) so a row moves to the next page as one piece.
+      w.querySelectorAll(".pp-shots").forEach(grid => {
+        let row = null;
+        [...grid.children].filter(f => !f.classList.contains("off")).forEach(f => {
+          if (!row || row.children.length === 2 || f.classList.contains("wide") || row.firstChild.classList.contains("wide")) {
+            row = document.createElement("div"); row.className = "pp-row"; grid.append(row);
+          }
+          row.append(f);
+        });
+      });
+      return w;
+    };
     const pdf = await html2pdf().set(opt(210, 297)).from(box($(".pp-cover"))).toPdf().get("pdf");
     let y = H;  // used mm on the current page; H = full
     const put = (canvas, fresh) => {

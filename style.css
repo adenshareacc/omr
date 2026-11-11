@@ -307,11 +307,12 @@ body.pdfmake .pp-cover { width: 794px; height: 1120px;  /* just under one A4 pag
 body.pdfmake .pp-cover .pp-hero { aspect-ratio: auto; flex: 0 0 624px; }
 body.pdfmake .pp-cover .pp-band { flex: 1; padding: 45px 60px; display: flex; flex-direction: column; }
 body.pdfmake .pp-cover .pp-by { margin-top: auto; }
-/* html2pdf keeps a picture whole by pushing it down with a spacer, which only works outside CSS grid */
+/* html2pdf keeps a picture or photo row whole by pushing it down with a spacer, which only works outside CSS grid */
 body.pdfmake .pp-figs { display: block; }
 body.pdfmake .pp-figs .pp-fig { margin-bottom: 16px; }
-body.pdfmake .pp-shots .pp-fig { display: inline-block; vertical-align: top; width: calc(50% - 8px); margin: 0 4px 16px; }
-body.pdfmake .pp-shots .pp-fig.wide { width: calc(100% - 8px); }
+body.pdfmake .pp-row { display: flex; gap: 16px; margin-bottom: 16px; }
+body.pdfmake .pp-row > .pp-fig { flex: 0 0 calc(50% - 8px); margin: 0; }
+body.pdfmake .pp-row > .pp-fig.wide { flex-basis: 100%; }
 body.pdfmake .pp-shots .pp-fig img { max-height: 219px; }
 body.pdfmake .pp-shots .pp-fig.wide img { max-height: 340px; }
 body.pdfmake .pp-plans .pp-fig img { max-height: 397px; }
