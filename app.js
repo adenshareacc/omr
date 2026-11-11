@@ -268,6 +268,7 @@ const routes = [
   [/^#\/me$/, viewMe, "approved"],
   [/^#\/projects$/, viewProjects, "approved"],
   [/^#\/p\/([^/?]+)$/, viewProject, "approved"],
+  [/^#\/proposal\/([^/?]+)$/, viewProposal, "approved"],
   [/^#\/vs$/, viewVersus, "approved"],
   ...(SHOW_COMPARE ? [[/^#\/compare(?:\/([^/?]+))?$/, viewCompare, "approved"]] : []),
   [/^#\/admin\/upload$/, viewUpload, "admin"],
@@ -287,7 +288,7 @@ async function route() {
   const hash = location.hash || "#/";
   flash("");
   setHero("");
-  document.body.classList.remove("wide", "proj");
+  document.body.classList.remove("wide", "proj", "proposal");
   if (listMap) { listMap.remove(); listMap = null; }
   if (!me) await loadMe();
   if (me && /^#\/(login|register)$/.test(hash)) {
@@ -733,6 +734,7 @@ async function viewProject(slug) {
   <aside class="side"><div class="card">
     <h2>${T("快速操作", "Quick actions")}</h2>
     ${blast ? `<button class="btn ok" data-copy>${T("复制 Blasting", "Copy blasting")}</button>` : ""}
+    <a class="btn ghost" href="#/proposal/${encodeURIComponent(p.slug)}">📄 ${T("客户 Proposal（PDF）", "Customer proposal (PDF)")}</a>
     ${SHOW_COMPARE ? `<a class="btn ghost" href="#/compare/${encodeURIComponent(p.slug)}">📊 周边价格对比</a>` : ""}
     ${geo || p.location_url ? `<a class="btn ghost" href="${e(mapsLink(p))}" target="_blank" rel="noopener">📍 Google Maps</a>` : ""}
     ${p.drive_url ? `<a class="btn ghost" href="${e(p.drive_url)}" target="_blank" rel="noopener">${T("Drive 文件夹", "Drive folder")}</a>` : ""}
@@ -773,6 +775,100 @@ async function viewProject(slug) {
     const was = btn.textContent;
     btn.textContent = T("已复制 ✓", "Copied ✓"); setTimeout(() => btn.textContent = was, 1500);
   }));
+}
+
+// Info lines a customer must not see (they would reveal the project, or are agent-only); their sub-bullets go too.
+const PRIVATE_LINE = /发展商|Developer|地址|Address|PIC|login|登入|登录|密码|password|价格|Price|可售|Available|Unit \d|Lot \d|\*\*电 \/ 承重|\*\*Power \/ floor|\*\*尺寸|\*\*Size \(W|commission|佣金|bank|银行/i;
+function customerSafe(text, p) {
+  const out = [];
+  let skip = false;
+  for (const line of String(text || "").split("\n")) {
+    const sub = /^\s+[-*]/.test(line);
+    if (!sub) skip = PRIVATE_LINE.test(line) || line.replace(/[-*\s]/g, "") === p.name.replace(/\s/g, "");
+    if (!skip) out.push(line);
+  }
+  let s = out.join("\n");
+  [p.name, p.developer].filter(Boolean).forEach(w => { s = s.split(w).join(""); });
+  return s.trim();
+}
+
+// A brochure-style proposal for customers: no project name, developer or exact location. Agents can edit the text, then print to PDF.
+async function viewProposal(slug) {
+  document.body.classList.add("proposal");
+  const res = await sb.from("projects").select("*, unit_types(*), files(*)").eq("slug", slug).maybeSingle();
+  check(res, "读取 project ");
+  const p = res.data;
+  if (!p) { render(`<div class="card"><h1>${T("找不到这个 project", "Project not found")}</h1></div>`); return; }
+  const units = p.unit_types.sort((a, b) => a.id - b.id).filter(u => u.spa_price || u.nett_price);
+  const stored = p.files.filter(f => f.storage_path).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  const signed = await signUrls(stored.map(f => f.storage_path));
+  const photos = stored.filter(f => f.doc_type === PHOTO);
+  // A layout uploaded with type "Master plan" is the site plan; the rest are per-type floor plans.
+  const isMaster = f => /master|总图|site plan/i.test(f.unit_type || "");
+  const plans = stored.filter(f => f.doc_type === PLAN && f.unit_type);
+  const masters = plans.filter(isMaster), layouts = plans.filter(f => !isMaster(f));
+  const selling = name => units.some(u => baseType(u.name) === baseType(name) && !/^0\b/.test(u.available || ""));
+  const sum = unitSummary(units), specs = parseSpecs(p.info_md);
+  const fig = (f, on) => `<figure class="pp-fig${on ? "" : " off"}"><img src="${e(signed[f.storage_path])}" alt="">
+    <figcaption contenteditable>${e(isMaster(f) ? "Master Plan" : f.unit_type)}</figcaption>
+    <label class="noprint small"><input type="checkbox" ${on ? "checked" : ""}> ${T("放进 PDF", "Include")}</label></figure>`;
+  const stat = (label, value) => value ? `<div><span>${label}</span><b contenteditable>${e(value)}</b></div>` : "";
+  const today = new Date().toISOString().slice(0, 10);
+  const info = customerSafe(T(p.info_md, p.info_md_en || p.info_md), p);
+  const pkg = customerSafe(T(p.package_md, p.package_md_en || p.package_md), p);
+
+  render(`<div class="pp-bar noprint card">
+      <a href="#/p/${encodeURIComponent(p.slug)}">← ${T("回到项目", "Back to project")}</a>
+      <span class="small muted">${T("文字可以直接点进去改；不要的图片取消勾选；然后按右边的按钮，选「存成 PDF」。", "Click any text to edit it, untick pictures you don't want, then press the button and choose “Save as PDF”.")}</span>
+      <button class="btn" id="print">${T("打印 / 存 PDF", "Print / Save PDF")}</button></div>
+  <div class="pp">
+    <section class="pp-page pp-cover">
+      <div class="pp-kicker" contenteditable>${e(T("项目推荐", "Property proposal"))}</div>
+      <h1 contenteditable>${e([p.category, p.area].filter(Boolean).join(" @ ") || T("工业项目", "Industrial project"))}</h1>
+      <div class="pp-loc" contenteditable>📍 ${e(p.area || "")}</div>
+      ${photos.length ? `<div class="pp-hero"><img src="${e(signed[photos[0].storage_path])}" alt="" id="hero-img"></div>
+        <div class="noprint small muted pp-ctl">${T("照片位置（拉动可以裁掉照片上的字）", "Photo position (drag to crop out any text on the photo)")}
+          <input type="range" id="hero-pos" min="0" max="100" value="50">
+          ${photos.length > 1 ? `<button class="btn ghost sm" id="hero-next">${T("换一张", "Next photo")}</button>` : ""}</div>` : ""}
+      <div class="pp-stats">
+        ${stat(T("价格", "Price"), sum.from_price && T(`${rm(sum.from_price)} 起`, `From ${rm(sum.from_price)}`))}
+        ${stat(T("建筑面积", "Built-up"), sum.bu_range && sum.bu_range + " sf")}
+        ${stat(T("土地面积", "Land area"), sum.land_range && sum.land_range + " sf")}
+        ${stat(T("电力", "Power"), specs.power)}
+        ${stat(T("承重", "Floor loading"), loadLabel(specs))}
+        ${stat(T("地契", "Tenure"), p.tenure)}
+      </div>
+    </section>
+
+    <section class="pp-page">
+      <h2>${T("项目亮点", "Highlights")}</h2>
+      <div class="md" contenteditable>${md(info) || "<p>–</p>"}</div>
+      ${units.length ? `<h2>${T("单位与价格", "Units & prices")}</h2>
+      <table class="pp-table"><tr><th>Type</th><th class="num">Land sf</th><th class="num">BU sf</th><th class="num">SPA</th><th class="num">Nett</th><th>${T("剩余", "Available")}</th></tr>
+        ${units.map(u => `<tr contenteditable><td>${e(u.name)}</td><td class="num">${num(u.land_sf)}</td><td class="num">${num(u.bu_sf)}</td>
+          <td class="num">${rm(u.spa_price)}</td><td class="num">${rm(u.nett_price)}</td><td>${e(u.available)}</td></tr>`).join("")}</table>` : ""}
+      ${pkg ? `<h2>🎁 ${T("配套优惠", "Package")}</h2><div class="md" contenteditable>${md(pkg)}</div>` : ""}
+    </section>
+
+    ${masters.length ? `<section class="pp-page"><h2>${T("总体规划", "Master plan")}</h2>
+      <div class="pp-figs one">${masters.map(f => fig(f, true)).join("")}</div></section>` : ""}
+    ${layouts.length ? `<section class="pp-page"><h2>${T("平面图", "Floor plans")}</h2>
+      <div class="pp-figs">${layouts.map(f => fig(f, selling(f.unit_type))).join("")}</div></section>` : ""}
+
+    <footer class="pp-foot">
+      <div><b contenteditable>${e(me.profile.name || "")}</b><br><span contenteditable>WhatsApp ${e(fmtPhone(me.profile.phone))}</span></div>
+      <div class="small muted" contenteditable>${T(`价格与配套以发展商最新资料为准 · ${today}`, `Prices and packages are subject to the developer's latest terms · ${today}`)}</div>
+    </footer>
+  </div>`);
+
+  document.querySelectorAll(".pp-fig input").forEach(box => box.onchange = () => box.closest("figure").classList.toggle("off", !box.checked));
+  const img = $("#hero-img");
+  if (img) {
+    let i = 0;
+    $("#hero-pos").oninput = ev => { img.style.objectPosition = `50% ${ev.target.value}%`; };
+    if ($("#hero-next")) $("#hero-next").onclick = () => { i = (i + 1) % photos.length; img.src = signed[photos[i].storage_path]; };
+  }
+  $("#print").onclick = () => window.print();
 }
 
 function compsTable(comps) {
@@ -1169,7 +1265,7 @@ async function viewEdit(slug) {
       ${plans.length ? `<div class="photos-edit">${plans.map(f => `<figure><img src="${e(photoUrls[f.storage_path] || "")}" alt="">
         <figcaption><b>${e(f.unit_type)}</b>
         <label style="display:inline;margin:0;color:var(--bad)"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label></figcaption></figure>`).join("")}</div>` : ""}
-      <div class="two"><div><label>Type</label><input id="plantype" list="typelist" placeholder="例如 Type A"><datalist id="typelist">${typeNames.map(t => `<option value="${e(t)}">`).join("")}</datalist></div>
+      <div class="two"><div><label>Type</label><input id="plantype" list="typelist" placeholder="例如 Type A；总图填 Master plan"><datalist id="typelist">${[...typeNames, "Master plan"].map(t => `<option value="${e(t)}">`).join("")}</datalist></div>
       <div><label>平面图图片</label><input type="file" id="newplans" multiple accept="image/*"></div></div></div>
     <div class="card"><h2>文件</h2>
       ${files.map(f => `<div><label style="display:inline;color:inherit"><input type="checkbox" data-delfile="${f.id}" style="width:auto"> 删除</label>

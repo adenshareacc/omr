@@ -225,3 +225,49 @@ body.proj main.wrap { max-width: 1320px; }
 .plans img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: #fff; display: block; border-bottom: 1px solid var(--line); }
 .plans figcaption { padding: 8px 12px; }
 .lightbox img { background: #fff; }
+
+/* customer proposal (#/proposal/<slug>): brochure layout, printed to A4 PDF */
+.pp-bar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 5; }
+.pp-bar .btn { margin-left: auto; }
+.pp { max-width: 820px; margin: 0 auto; background: #fff; }
+.pp-page { padding: 36px 40px; border-bottom: 1px dashed var(--line); }
+.pp-page h2 { color: var(--brand); border-bottom: 2px solid var(--accent); padding-bottom: 6px; margin: 22px 0 12px; }
+.pp-page h2:first-child { margin-top: 0; }
+.pp-kicker { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--accent); }
+.pp-cover h1 { font-size: 34px; color: var(--brand); margin: 6px 0 2px; }
+.pp-loc { color: var(--muted); margin-bottom: 18px; }
+.pp-hero { aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #dfe4ea; }
+.pp-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-ctl { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.pp-ctl input { width: 200px; }
+.pp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-top: 22px; }
+.pp-stats > div { background: #fff; padding: 12px 14px; }
+.pp-stats span { display: block; font-size: 11px; font-weight: 700; letter-spacing: .6px; color: var(--muted); text-transform: uppercase; }
+.pp-stats b { font-size: 17px; color: var(--brand); }
+.pp-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pp-table th { background: var(--brand); color: #fff; text-align: left; padding: 7px 8px; font-weight: 600; }
+.pp-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.pp-table .num { text-align: right; }
+.pp-figs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pp-figs.one { grid-template-columns: 1fr; }
+.pp-fig { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; break-inside: avoid; }
+.pp-fig img { width: 100%; max-height: 640px; object-fit: contain; display: block; background: #fff; }
+.pp-fig figcaption { padding: 6px 10px; font-weight: 600; border-top: 1px solid var(--line); }
+.pp-fig label { display: block; padding: 0 10px 8px; margin: 0; }
+.pp-fig.off { opacity: .35; }
+.pp-foot { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; padding: 18px 40px; background: var(--brand); color: #fff; }
+.pp-foot .muted { color: #c9d3e0; }
+[contenteditable]:hover { outline: 1px dashed var(--accent); }
+@media (max-width: 600px) { .pp-page { padding: 22px 16px; } .pp-stats { grid-template-columns: 1fr 1fr; } .pp-figs { grid-template-columns: 1fr; } .pp-table { font-size: 12px; } }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body.proposal { background: #fff; }
+  body.proposal header.top, body.proposal #flash, .noprint, .pp-fig.off { display: none !important; }
+  body.proposal main.wrap { padding: 0; max-width: none; }
+  .pp { max-width: none; }
+  .pp-page { padding: 0; border: 0; break-after: page; }
+  .pp-page:last-of-type { break-after: auto; margin-bottom: 16px; }
+  .pp-foot { padding: 12px 16px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .pp-table th, .pp-stats, .pp-kicker { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  [contenteditable]:hover { outline: 0; }
+}
