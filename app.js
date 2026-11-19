@@ -126,10 +126,11 @@ function unitSizes(p, units) {
   return { of: u => found[u.name], rest: segs.filter(g => !used.has(g)).map(g => g.raw.replace("其他 ", "").replace("（建筑）", T("（建筑）", " (built-up)")).replace("角头", T("角头", "corner"))) };
 }
 
-// The monthly maintenance line in info_md, e.g. "- **管理费 / 月:** Type A RM642；Type B RM805"; labels must equal unit type names.
+// The monthly maintenance line in info_md, e.g. "- **管理费 / 月:** Type A RM584 / month, RM642 / month (with sinking fund)；Type B RM805 / month";
+// labels must equal unit type names.
 const MAINT_LINE = /^.*\*\*管理费 \/ 月:\*\*.*\n?/m;
 const unitMaint = p => Object.fromEntries((String(p.info_md || "").match(/\*\*管理费 \/ 月:\*\*\s*(.+)/)?.[1] || "")
-  .split("；").map(s => s.trim().match(/^(.+?)\s+(RM[\d,]+)$/)).filter(Boolean).map(m => [m[1], m[2]]));
+  .split("；").map(s => s.trim().match(/^(.+?)\s+(RM\d.*)$/)).filter(Boolean).map(m => [m[1], m[2]]));
 
 // Projects picked for the Compare tab; kept per browser so agents can pick while browsing.
 const MAX_COMPARE = 4;
@@ -644,7 +645,7 @@ async function viewProject(slug) {
     ["Nett", u => rm(u.nett_price), units.some(u => u.nett_price)],
     ["RM psf (BU)", u => num(psf(net(u), u.bu_sf)), units.some(u => net(u) && u.bu_sf)],
     ["RM psf (land)", u => num(psf(net(u), u.land_sf)), units.some(u => net(u) && u.land_sf)],
-    [T("管理费 / 月", "Maint. / mth"), u => e(maint[u.name] || ""), units.some(u => maint[u.name])],
+    [T("管理费 / 月", "Maint. / mth"), u => e(maint[u.name] || "").replace(", ", "<br>"), units.some(u => maint[u.name])],
   ].filter(c => c[2]);
   const hasAvail = units.some(u => u.available);
   const none = `<p class="muted">${T("暂无资料", "No details yet")}</p>`;
