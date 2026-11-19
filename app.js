@@ -418,7 +418,6 @@ function fitListing() {
 }
 window.addEventListener("resize", fitListing);
 
-const LOAD_STEPS = [1, 1.5, 2, 3, 5];
 
 const pinIcon = (hl, approx) => L.divIcon({ className: "", html: `<div class="pin${hl ? " hl" : ""}${approx ? " approx" : ""}"></div>`,
   iconSize: [30, 30], iconAnchor: [15, 30], popupAnchor: [0, -28] });
@@ -448,9 +447,6 @@ async function viewProjects() {
       <select id="area"><option value="">${T("全部地区", "All areas")}</option>${opts(areas, saved.area)}</select>
       ${cats.length ? `<select id="cat"><option value="">${T("全部类型", "All types")}</option>${opts(cats, saved.cat)}</select>` : ""}
       <select id="status"><option value="">${T("全部状态", "All statuses")}</option>${Object.entries(STATUS_LABEL).map(([k, v]) => `<option value="${k}" ${k === saved.status ? "selected" : ""}>${v}</option>`).join("")}</select>
-      <select id="amp" aria-label="${T("电力", "Power supply")}"><option value="">${T("电力不限", "Any power")}</option>${[100, 150, 200, 300, 400, 600, 800, 1000].map(a => `<option value="${a}" ${String(a) === saved.amp ? "selected" : ""}>≥ ${num(a)}A</option>`).join("")}</select>
-      <select id="tmin" aria-label="${T("承重从", "Floor loading from")}"><option value="">${T("承重不限", "Any loading")}</option>${LOAD_STEPS.map(t => `<option value="${t}" ${String(t) === saved.tmin ? "selected" : ""}>${T(`≥ ${t} 吨/m²`, `≥ ${t} ton/m²`)}</option>`).join("")}</select>
-      <select id="tmax" aria-label="${T("承重到", "Floor loading to")}"><option value="">${T("承重上限不限", "No upper limit")}</option>${LOAD_STEPS.map(t => `<option value="${t}" ${String(t) === saved.tmax ? "selected" : ""}>${T(`≤ ${t} 吨/m²`, `≤ ${t} ton/m²`)}</option>`).join("")}</select>
       ${isAdmin() ? `<a class="btn ghost" href="#/admin/new">+ 新增 project</a>` : ""}
     </div>
     <div class="listing">
@@ -486,15 +482,9 @@ async function viewProjects() {
   const draw = () => {
     const q = $("#q").value.trim().toLowerCase(), area = $("#area").value, cat = $("#cat")?.value || "", status = $("#status").value;
     const inview = $("#inview").checked;
-    const amp = $("#amp").value, tmin = $("#tmin").value, tmax = $("#tmax").value;
-    try { sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, cat, status, inview, amp, tmin, tmax })); } catch {}
-    // A project passes when any of its types reaches the power, or its loading range touches the range asked for.
-    const specOk = p => (!amp || Math.max(0, ...p.specs.amps) >= +amp)
-      && (!(tmin || tmax) || (p.specs.tons.length > 0 && Math.max(...p.specs.tons) >= +(tmin || 0) && Math.min(...p.specs.tons) <= +(tmax || Infinity)));
-    const basic = projects.filter(p => (!q || [p.name, p.area, p.category, p.developer].join(" ").toLowerCase().includes(q))
+    try { sessionStorage.setItem("omr_filters", JSON.stringify({ q, area, cat, status, inview })); } catch {}
+    const matches = projects.filter(p => (!q || [p.name, p.area, p.category, p.developer].join(" ").toLowerCase().includes(q))
       && (!area || p.area === area) && (!cat || p.category === cat) && (!status || p.status === status));
-    const matches = basic.filter(specOk);
-    const noData = basic.filter(p => (amp && !p.specs.amps.length) || ((tmin || tmax) && !p.specs.tons.length)).length;
     if (cluster) {
       cluster.clearLayers();
       matches.forEach(p => markers[p.id] && cluster.addLayer(markers[p.id]));
@@ -502,7 +492,7 @@ async function viewProjects() {
     // On phones the map is hidden behind a toggle; only filter by it while it is on screen.
     const bounds = listMap && inview && $("#map").offsetWidth ? listMap.getBounds() : null;
     const rows = bounds ? matches.filter(p => hasGeo(p) && bounds.contains([p.lat, p.lng])) : matches;
-    $("#count").textContent = T(`找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`, `${rows.length} projects found${bounds ? " (in map area)" : ""}`) + (noData ? T(`；另有 ${noData} 个没有这项资料，没有列出`, `; ${noData} more have no data for this and are not listed`) : "");
+    $("#count").textContent = T(`找到 ${rows.length} 个 project${bounds ? "（地图范围内）" : ""}`, `${rows.length} projects found${bounds ? " (in map area)" : ""}`);
     $("#list").innerHTML = rows.map(p => `<a class="lcard" data-id="${p.id}" href="#/p/${encodeURIComponent(p.slug)}">
         <div class="ph">${p.cover ? `<img src="${e(p.cover)}" alt="" loading="lazy">` : `<div class="noimg">${e(p.name)}</div>`}
           <span class="tag ${e(p.status)}">${e(STATUS_LABEL[p.status] || p.status)}</span>
@@ -530,7 +520,7 @@ async function viewProjects() {
       c.onmouseleave = () => { m.setIcon(pinIcon(false, p.geo_approx)); m.setZIndexOffset(0); };
     });
   };
-  ["q", "area", "cat", "status", "inview", "amp", "tmin", "tmax"].forEach(id => $("#" + id)?.addEventListener("input", draw));
+  ["q", "area", "cat", "status", "inview"].forEach(id => $("#" + id)?.addEventListener("input", draw));
   if (listMap) listMap.on("moveend", () => { if ($("#inview")?.checked) draw(); });
   let mapShown = innerWidth > 900;
   $("#toggle").onclick = () => {
