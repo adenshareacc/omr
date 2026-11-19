@@ -126,6 +126,11 @@ function unitSizes(p, units) {
   return { of: u => found[u.name], rest: segs.filter(g => !used.has(g)).map(g => g.raw.replace("其他 ", "").replace("（建筑）", T("（建筑）", " (built-up)")).replace("角头", T("角头", "corner"))) };
 }
 
+// The monthly maintenance line in info_md, e.g. "- **管理费 / 月:** Type A RM642；Type B RM805"; labels must equal unit type names.
+const MAINT_LINE = /^.*\*\*管理费 \/ 月:\*\*.*\n?/m;
+const unitMaint = p => Object.fromEntries((String(p.info_md || "").match(/\*\*管理费 \/ 月:\*\*\s*(.+)/)?.[1] || "")
+  .split("；").map(s => s.trim().match(/^(.+?)\s+(RM[\d,]+)$/)).filter(Boolean).map(m => [m[1], m[2]]));
+
 // Projects picked for the Compare tab; kept per browser so agents can pick while browsing.
 const MAX_COMPARE = 4;
 function compareList() {
@@ -630,6 +635,7 @@ async function viewProject(slug) {
   const net = u => u.nett_price || u.spa_price;
   // Only show price-table columns that have data for this project.
   const sizes = unitSizes(p, units);
+  const maint = unitMaint(p);
   const withDims = (value, u, bu) => { const g = sizes.of(u); return value + (g && g.bu === bu ? `<div class="cell-dim">${e(g.dims)}</div>` : ""); };
   const cols = [
     ["Land sf", u => withDims(num(u.land_sf), u, false), units.some(u => u.land_sf || (sizes.of(u) && !sizes.of(u).bu))],
@@ -638,6 +644,7 @@ async function viewProject(slug) {
     ["Nett", u => rm(u.nett_price), units.some(u => u.nett_price)],
     ["RM psf (BU)", u => num(psf(net(u), u.bu_sf)), units.some(u => net(u) && u.bu_sf)],
     ["RM psf (land)", u => num(psf(net(u), u.land_sf)), units.some(u => net(u) && u.land_sf)],
+    [T("管理费 / 月", "Maint. / mth"), u => e(maint[u.name] || ""), units.some(u => maint[u.name])],
   ].filter(c => c[2]);
   const hasAvail = units.some(u => u.available);
   const none = `<p class="muted">${T("暂无资料", "No details yet")}</p>`;
@@ -675,7 +682,7 @@ async function viewProject(slug) {
       : p.location_url ? `<p><a class="btn ghost sm" href="${e(p.location_url)}" target="_blank" rel="noopener">📍 ${T("打开 Google Maps", "Open Google Maps")}</a></p>` : `<p class="muted">${T("还没有位置资料。", "No location yet.")}</p>`}
     </div>
 
-    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(units.length ? T(p.info_md, p.info_md_en || p.info_md)?.replace(SIZE_LINE, "") : T(p.info_md, p.info_md_en || p.info_md)) || none}</div>
+    <div class="section md"><h2>${T("项目资料", "Project details")}</h2>${md(units.length ? T(p.info_md, p.info_md_en || p.info_md)?.replace(SIZE_LINE, "").replace(MAINT_LINE, "") : T(p.info_md, p.info_md_en || p.info_md)) || none}</div>
     <div class="section md"><h2>🎁 Package</h2>${md(T(p.package_md, p.package_md_en || p.package_md)) || none}</div>
 
     <div class="section"><h2>${T("Unit 类型与价格", "Unit types & prices")}</h2>
