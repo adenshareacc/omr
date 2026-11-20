@@ -709,7 +709,7 @@ async function viewProject(slug) {
         <div><label>Built-up sf</label><input id="c_bu" inputmode="decimal"></div>
         <div><label>Land sf</label><input id="c_land" inputmode="decimal"></div>
         <div><label>Loan margin %</label><input id="c_margin" inputmode="decimal" value="90"></div>
-        <div><label>${T("利率 % p.a.", "Interest % p.a.")}</label><input id="c_rate" inputmode="decimal" value="4.5"></div>
+        <div><label>${T("利率 % p.a.", "Interest % p.a.")}</label><input id="c_rate" inputmode="decimal" value="3.8"></div>
         <div><label>${T("年限", "Years")}</label><input id="c_years" inputmode="decimal" value="25"></div>
       </div>
       <div class="calc-out" id="c_out"></div>
