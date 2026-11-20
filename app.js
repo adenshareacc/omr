@@ -430,7 +430,7 @@ const pinIcon = (hl, approx) => L.divIcon({ className: "", html: `<div class="pi
 
 async function viewProjects() {
   const [res, ph] = await Promise.all([
-    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, info_md, info_md_en, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("area").order("name"),
+    sb.from("projects").select("id, slug, name, area, category, tenure, developer, status, lat, lng, geo_approx, info_md, info_md_en, unit_types(spa_price, nett_price, land_sf, bu_sf)").order("updated_at", { ascending: false, nullsFirst: false }).order("id", { ascending: false }),
     sb.from("files").select("project_id, storage_path").eq("doc_type", PHOTO).not("storage_path", "is", null).order("sort_order").order("id"),
   ]);
   check(res, "读取 projects ");
